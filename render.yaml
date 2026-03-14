@@ -1,0 +1,32 @@
+services:
+  # Backend API
+  - type: web
+    name: civicpulse-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: ML_SERVICE_URL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+
+  # ML Service
+  - type: web
+    name: civicpulse-ml
+    runtime: python
+    rootDir: ml
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --timeout 120
+    envVars:
+      - key: FLASK_DEBUG
+        value: false
