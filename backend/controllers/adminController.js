@@ -1,12 +1,20 @@
 const { supabaseAdmin } = require('../models/supabaseClient');
+const { getOptimalAllocation, recalculatePriorities } = require('../services/prioritizationService');
 
 /**
- * GET /api/admin/priorities — Budget-aware prioritized complaints
+ * GET /api/admin/priorities — Budget-aware prioritized complaints (Knapsack DP)
  */
 exports.getPriorities = async (req, res, next) => {
   try {
     const { budget_limit, max_items = 50 } = req.query;
 
+    if (budget_limit) {
+      // Use 0/1 Knapsack optimization
+      const result = await getOptimalAllocation(parseFloat(budget_limit));
+      return res.json(result);
+    }
+
+    // No budget → just return by priority
     const { data: complaints } = await supabaseAdmin
       .from('complaints')
       .select('*, departments(name, code)')
@@ -14,44 +22,17 @@ exports.getPriorities = async (req, res, next) => {
       .order('priority_score', { ascending: false })
       .limit(parseInt(max_items));
 
-    // If budget_limit is set, apply budget-aware filtering
-    let prioritized = complaints || [];
-    if (budget_limit) {
-      const budget = parseFloat(budget_limit);
-      // Estimated cost per severity level (in currency units)
-      const costEstimate = { critical: 50000, high: 30000, medium: 15000, low: 5000 };
-      let runningCost = 0;
-
-      prioritized = prioritized.filter(c => {
-        const cost = costEstimate[c.severity] || 10000;
-        if (runningCost + cost <= budget) {
-          runningCost += cost;
-          return true;
-        }
-        return false;
-      });
-
-      return res.json({
-        prioritized,
-        budgetUsed: runningCost,
-        budgetLimit: budget,
-        itemsIncluded: prioritized.length,
-        itemsExcluded: (complaints || []).length - prioritized.length
-      });
-    }
-
-    res.json({ prioritized, total: prioritized.length });
+    res.json({ prioritized: complaints || [], total: (complaints || []).length });
   } catch (err) { next(err); }
 };
 
 /**
- * POST /api/admin/priorities/configure — Set priority weights
+ * POST /api/admin/priorities/configure — Set priority weights and recalculate
  */
 exports.configurePriorities = async (req, res, next) => {
   try {
     const { weights } = req.body;
 
-    // Store in analytics_cache for use by scoring engine
     await supabaseAdmin
       .from('analytics_cache')
       .upsert({
@@ -66,12 +47,15 @@ exports.configurePriorities = async (req, res, next) => {
         computed_for: new Date().toISOString().split('T')[0]
       }, { onConflict: 'metric_name' });
 
-    res.json({ message: 'Priority weights updated', weights });
+    // Recalculate all priorities with new weights
+    const result = await recalculatePriorities(weights);
+
+    res.json({ message: 'Priority weights updated and recalculated', weights, ...result });
   } catch (err) { next(err); }
 };
 
 /**
- * GET /api/admin/users — List all users
+ * GET /api/admin/users — List all users with complaint counts
  */
 exports.getUsers = async (req, res, next) => {
   try {
@@ -108,5 +92,35 @@ exports.updateUserRole = async (req, res, next) => {
     if (error) return res.status(500).json({ error: error.message });
 
     res.json({ message: 'Role updated', user: data });
+  } catch (err) { next(err); }
+};
+
+/**
+ * POST /api/admin/message — Send message to dept head about a complaint
+ */
+exports.sendMessage = async (req, res, next) => {
+  try {
+    const { complaint_id, message } = req.body;
+
+    if (!complaint_id || !message) {
+      return res.status(400).json({ error: 'complaint_id and message are required' });
+    }
+
+    // Add as complaint update (message = audit trail entry)
+    const { data, error } = await supabaseAdmin
+      .from('complaint_updates')
+      .insert({
+        complaint_id,
+        updated_by: req.user.id,
+        old_status: null,
+        new_status: null,
+        comment: `[ADMIN MESSAGE] ${message}`
+      })
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    res.json({ message: 'Message sent to department', update: data });
   } catch (err) { next(err); }
 };

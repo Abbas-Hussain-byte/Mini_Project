@@ -4,85 +4,156 @@ const { routeToDepartment } = require('../services/departmentRoutingService');
 
 /**
  * POST /api/complaints — Create a new complaint
+ * Supports modes: 'image_only', 'image_text', 'text_only'
  */
 exports.createComplaint = async (req, res, next) => {
   try {
-    const { title, description, category, latitude, longitude, address } = req.body;
+    const { title, description, category, latitude, longitude, address, mode } = req.body;
 
-    if (!title || !description || !latitude || !longitude) {
-      return res.status(400).json({ error: 'title, description, latitude, and longitude are required' });
+    // For image_only mode: title and description are optional (AI fills them)
+    const isImageOnly = mode === 'image_only';
+    if (!isImageOnly && !title) {
+      return res.status(400).json({ error: 'title is required (or use mode=image_only)' });
+    }
+    if (!latitude || !longitude) {
+      return res.status(400).json({ error: 'latitude and longitude are required' });
     }
 
-    // 1. Upload images to Supabase Storage
+    // 1. Upload images/videos to Supabase Storage
     let imageUrls = [];
+    let videoUrl = null;
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
-        const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${file.mimetype.split('/')[1]}`;
+        const isVideo = file.mimetype.startsWith('video/');
+        const bucket = isVideo ? 'complaint-videos' : 'complaint-images';
+        const ext = file.mimetype.split('/')[1] || 'bin';
+        const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
         const { data, error } = await supabaseAdmin.storage
-          .from('complaint-images')
+          .from(bucket)
           .upload(fileName, file.buffer, { contentType: file.mimetype });
 
         if (!error) {
           const { data: urlData } = supabaseAdmin.storage
-            .from('complaint-images')
+            .from(bucket)
             .getPublicUrl(fileName);
-          imageUrls.push(urlData.publicUrl);
+          if (isVideo) {
+            videoUrl = urlData.publicUrl;
+          } else {
+            imageUrls.push(urlData.publicUrl);
+          }
         }
       }
     }
 
-    // 2. Run AI analysis (async — non-blocking for user)
+    // 2. Run AI analysis
     let aiAnalysis = {};
     let detectedLabels = [];
     let severity = req.body.severity || 'medium';
     let priorityScore = 0;
+    let aiTitle = title || 'Civic Issue Reported';
+    let aiDescription = description || '';
 
     try {
       const analysisResult = await analyzeComplaint({
-        title,
-        description,
+        title: title || 'image submission',
+        description: description || 'Image-based complaint',
         imageUrls,
+        videoUrl,
         latitude: parseFloat(latitude),
-        longitude: parseFloat(longitude)
+        longitude: parseFloat(longitude),
+        mode: mode || 'image_text'
       });
       aiAnalysis = analysisResult.analysis || {};
       detectedLabels = analysisResult.detectedLabels || [];
       severity = analysisResult.severity || severity;
       priorityScore = analysisResult.priorityScore || 0;
+
+      // For image_only mode: use AI-generated title and description
+      if (isImageOnly) {
+        aiTitle = analysisResult.title || aiTitle;
+        aiDescription = analysisResult.description || aiDescription;
+      }
     } catch (aiErr) {
       console.warn('⚠️ AI analysis failed, proceeding with manual data:', aiErr.message);
     }
 
-    // 3. Insert complaint
+    // 3. Check for duplicates before inserting
+    let duplicateOf = null;
+    let duplicateInfo = null;
+    try {
+      const latDelta = 0.005; // ~500m
+      const lngDelta = 0.005;
+      const cat = category || (detectedLabels[0] || 'other');
+
+      const { data: nearbyComplaints } = await supabaseAdmin
+        .from('complaints')
+        .select('id, title, priority_score, created_at')
+        .eq('category', cat)
+        .gte('latitude', parseFloat(latitude) - latDelta)
+        .lte('latitude', parseFloat(latitude) + latDelta)
+        .gte('longitude', parseFloat(longitude) - lngDelta)
+        .lte('longitude', parseFloat(longitude) + lngDelta)
+        .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+        .neq('status', 'resolved')
+        .neq('status', 'rejected')
+        .limit(5);
+
+      if (nearbyComplaints && nearbyComplaints.length > 0) {
+        // Link to the first match as duplicate
+        const original = nearbyComplaints[0];
+        duplicateOf = original.id;
+        duplicateInfo = {
+          originalId: original.id,
+          originalTitle: original.title,
+          message: 'A similar complaint already exists nearby. Your report has been linked and the original priority has been boosted!'
+        };
+
+        // Boost original complaint priority (+10%)
+        const boostedPriority = Math.min((original.priority_score || 0.5) * 1.1, 1.0);
+        await supabaseAdmin
+          .from('complaints')
+          .update({ priority_score: parseFloat(boostedPriority.toFixed(4)) })
+          .eq('id', original.id);
+      }
+    } catch (dupErr) {
+      console.warn('⚠️ Duplicate check failed:', dupErr.message);
+    }
+
+    // 4. Insert complaint
     const { data: complaint, error } = await supabaseAdmin
       .from('complaints')
       .insert({
         user_id: req.user.id,
-        title,
-        description,
+        title: isImageOnly ? aiTitle : title,
+        description: isImageOnly ? aiDescription : (description || ''),
         category: category || (detectedLabels[0] || 'other'),
         latitude: parseFloat(latitude),
         longitude: parseFloat(longitude),
         address,
         severity,
         image_urls: imageUrls,
-        ai_analysis: aiAnalysis,
+        ai_analysis: { ...aiAnalysis, videoUrl },
         ai_detected_labels: detectedLabels,
-        priority_score: priorityScore
+        priority_score: priorityScore,
+        duplicate_of: duplicateOf,
+        status: duplicateOf ? 'duplicate' : 'submitted'
       })
       .select()
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
 
-    // 4. Auto-assign to department
-    try {
-      await routeToDepartment(complaint);
-    } catch (deptErr) {
-      console.warn('⚠️ Department routing failed:', deptErr.message);
+    // 5. Auto-assign to department (skip for duplicates)
+    if (!duplicateOf) {
+      try {
+        await routeToDepartment(complaint);
+      } catch (deptErr) {
+        console.warn('⚠️ Department routing failed:', deptErr.message);
+      }
     }
 
-    // 5. Fetch the updated complaint with department info
+    // 6. Fetch the updated complaint with department info
     const { data: fullComplaint } = await supabaseAdmin
       .from('complaints')
       .select('*, departments(name, code)')
@@ -90,8 +161,12 @@ exports.createComplaint = async (req, res, next) => {
       .single();
 
     res.status(201).json({
-      message: 'Complaint submitted successfully',
-      complaint: fullComplaint
+      message: duplicateOf
+        ? 'Complaint linked as duplicate — original priority boosted!'
+        : 'Complaint submitted successfully',
+      complaint: fullComplaint,
+      duplicate: duplicateInfo,
+      aiGenerated: isImageOnly ? { title: aiTitle, description: aiDescription } : null
     });
   } catch (err) { next(err); }
 };
@@ -160,12 +235,20 @@ exports.getComplaintById = async (req, res, next) => {
 };
 
 /**
- * PATCH /api/complaints/:id — Update complaint (admin)
+ * PATCH /api/complaints/:id — Update complaint status (admin/dept_head)
  */
 exports.updateComplaint = async (req, res, next) => {
   try {
     const { status, severity, category, notes } = req.body;
     const updateData = { updated_at: new Date().toISOString() };
+
+    // Dept heads can only set status to pending_verification, not resolved
+    const userRole = req.user.role;
+    if (status === 'resolved' && userRole !== 'admin') {
+      return res.status(403).json({
+        error: 'Only administrators can mark complaints as resolved. Use pending_verification instead.'
+      });
+    }
 
     if (status) updateData.status = status;
     if (severity) updateData.severity = severity;
@@ -203,6 +286,94 @@ exports.updateComplaint = async (req, res, next) => {
 };
 
 /**
+ * POST /api/complaints/:id/verify — Admin verifies resolution
+ */
+exports.verifyResolution = async (req, res, next) => {
+  try {
+    const { data: complaint } = await supabaseAdmin
+      .from('complaints')
+      .select('status')
+      .eq('id', req.params.id)
+      .single();
+
+    if (!complaint) return res.status(404).json({ error: 'Complaint not found' });
+    if (complaint.status !== 'pending_verification') {
+      return res.status(400).json({ error: 'Complaint must be in pending_verification status' });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('complaints')
+      .update({
+        status: 'resolved',
+        resolved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    await supabaseAdmin
+      .from('complaint_updates')
+      .insert({
+        complaint_id: req.params.id,
+        updated_by: req.user.id,
+        old_status: 'pending_verification',
+        new_status: 'resolved',
+        comment: req.body.notes || 'Resolution verified by admin'
+      });
+
+    res.json({ message: 'Resolution verified successfully', complaint: data });
+  } catch (err) { next(err); }
+};
+
+/**
+ * POST /api/complaints/:id/reject-resolution — Admin rejects dept resolution
+ */
+exports.rejectResolution = async (req, res, next) => {
+  try {
+    const { notes } = req.body;
+    if (!notes) return res.status(400).json({ error: 'notes explaining rejection are required' });
+
+    const { data: complaint } = await supabaseAdmin
+      .from('complaints')
+      .select('status')
+      .eq('id', req.params.id)
+      .single();
+
+    if (!complaint) return res.status(404).json({ error: 'Complaint not found' });
+    if (complaint.status !== 'pending_verification') {
+      return res.status(400).json({ error: 'Complaint must be in pending_verification status' });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('complaints')
+      .update({
+        status: 'in_progress',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+
+    await supabaseAdmin
+      .from('complaint_updates')
+      .insert({
+        complaint_id: req.params.id,
+        updated_by: req.user.id,
+        old_status: 'pending_verification',
+        new_status: 'in_progress',
+        comment: `Resolution REJECTED by admin: ${notes}`
+      });
+
+    res.json({ message: 'Resolution rejected — sent back for further work', complaint: data });
+  } catch (err) { next(err); }
+};
+
+/**
  * GET /api/complaints/nearby — Complaints within radius
  */
 exports.getNearbyComplaints = async (req, res, next) => {
@@ -211,7 +382,6 @@ exports.getNearbyComplaints = async (req, res, next) => {
 
     if (!lat || !lng) return res.status(400).json({ error: 'lat and lng are required' });
 
-    // Approximate bounding box
     const latDelta = parseFloat(radius_km) / 111.0;
     const lngDelta = parseFloat(radius_km) / (111.0 * Math.cos(parseFloat(lat) * Math.PI / 180));
 
@@ -235,7 +405,6 @@ exports.getNearbyComplaints = async (req, res, next) => {
  */
 exports.getDuplicates = async (req, res, next) => {
   try {
-    // For MVP: simple text-based duplicate check using category + nearby location
     const { data: complaint } = await supabaseAdmin
       .from('complaints')
       .select('*')
@@ -244,7 +413,7 @@ exports.getDuplicates = async (req, res, next) => {
 
     if (!complaint) return res.status(404).json({ error: 'Complaint not found' });
 
-    const latDelta = 0.005; // ~500m
+    const latDelta = 0.005;
     const lngDelta = 0.005;
 
     const { data: nearby } = await supabaseAdmin

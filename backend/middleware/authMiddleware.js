@@ -1,7 +1,8 @@
 const { supabase } = require('../models/supabaseClient');
+const { supabaseAdmin } = require('../models/supabaseClient');
 
 /**
- * Verify JWT token from Supabase Auth
+ * Verify JWT token and ALWAYS attach role to req.user
  */
 const authMiddleware = async (req, res, next) => {
   try {
@@ -17,7 +18,19 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
 
-    req.user = user;
+    // ALWAYS fetch profile to get role
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('role, full_name, phone')
+      .eq('id', user.id)
+      .single();
+
+    req.user = {
+      ...user,
+      role: profile?.role || 'citizen',
+      full_name: profile?.full_name || '',
+      phone: profile?.phone || ''
+    };
     req.token = token;
     next();
   } catch (err) {
@@ -26,26 +39,24 @@ const authMiddleware = async (req, res, next) => {
 };
 
 /**
- * Check if user has admin role
+ * Check if user has admin role (admin only, NOT dept_head)
  */
 const adminMiddleware = async (req, res, next) => {
-  try {
-    const { supabaseAdmin } = require('../models/supabaseClient');
-    const { data: profile } = await supabaseAdmin
-      .from('profiles')
-      .select('role')
-      .eq('id', req.user.id)
-      .single();
-
-    if (!profile || !['admin', 'department_head'].includes(profile.role)) {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
-
-    req.userRole = profile.role;
-    next();
-  } catch (err) {
-    return res.status(403).json({ error: 'Authorization check failed' });
+  // Role already attached by authMiddleware
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
   }
+  next();
 };
 
-module.exports = { authMiddleware, adminMiddleware };
+/**
+ * Check if user is admin OR department_head
+ */
+const staffMiddleware = async (req, res, next) => {
+  if (!['admin', 'department_head'].includes(req.user.role)) {
+    return res.status(403).json({ error: 'Staff access required (admin or department head)' });
+  }
+  next();
+};
+
+module.exports = { authMiddleware, adminMiddleware, staffMiddleware };

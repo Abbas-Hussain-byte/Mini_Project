@@ -122,6 +122,72 @@ exports.getDepartmentWorkers = async (req, res, next) => {
 };
 
 /**
+ * POST /api/departments/:id/workers — Add a worker
+ */
+exports.addWorker = async (req, res, next) => {
+  try {
+    const { name, phone, role, status } = req.body;
+    if (!name) return res.status(400).json({ error: 'Worker name is required' });
+
+    const { data, error } = await supabaseAdmin
+      .from('department_workers')
+      .insert({
+        department_id: req.params.id,
+        name,
+        phone: phone || '',
+        role: role || 'field_worker',
+        status: status || 'available',
+        active_assignments: 0
+      })
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.status(201).json({ message: 'Worker added', worker: data });
+  } catch (err) { next(err); }
+};
+
+/**
+ * PATCH /api/departments/workers/:id — Update worker
+ */
+exports.updateWorker = async (req, res, next) => {
+  try {
+    const { name, phone, role, status, active_assignments } = req.body;
+    const updateData = {};
+    if (name) updateData.name = name;
+    if (phone !== undefined) updateData.phone = phone;
+    if (role) updateData.role = role;
+    if (status) updateData.status = status;
+    if (active_assignments !== undefined) updateData.active_assignments = active_assignments;
+
+    const { data, error } = await supabaseAdmin
+      .from('department_workers')
+      .update(updateData)
+      .eq('id', req.params.id)
+      .select()
+      .single();
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ message: 'Worker updated', worker: data });
+  } catch (err) { next(err); }
+};
+
+/**
+ * DELETE /api/departments/workers/:id — Remove worker
+ */
+exports.deleteWorker = async (req, res, next) => {
+  try {
+    const { error } = await supabaseAdmin
+      .from('department_workers')
+      .delete()
+      .eq('id', req.params.id);
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ message: 'Worker removed' });
+  } catch (err) { next(err); }
+};
+
+/**
  * POST /api/departments/:id/assignments — Manual assignment
  */
 exports.createAssignment = async (req, res, next) => {

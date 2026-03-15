@@ -44,6 +44,8 @@ export const complaintsAPI = {
   getAll: (params) => api.get('/complaints', { params }),
   getById: (id) => api.get(`/complaints/${id}`),
   update: (id, data) => api.patch(`/complaints/${id}`, data),
+  verify: (id, data) => api.post(`/complaints/${id}/verify`, data),
+  rejectResolution: (id, data) => api.post(`/complaints/${id}/reject-resolution`, data),
   getDuplicates: (id) => api.get(`/complaints/${id}/duplicates`),
   getNearby: (params) => api.get('/complaints/nearby', { params }),
 };
@@ -64,6 +66,9 @@ export const departmentsAPI = {
   getById: (id) => api.get(`/departments/${id}`),
   getAssignments: (id, params) => api.get(`/departments/${id}/assignments`, { params }),
   getWorkers: (id) => api.get(`/departments/${id}/workers`),
+  addWorker: (id, data) => api.post(`/departments/${id}/workers`, data),
+  updateWorker: (id, data) => api.patch(`/departments/workers/${id}`, data),
+  deleteWorker: (id) => api.delete(`/departments/workers/${id}`),
   createAssignment: (id, data) => api.post(`/departments/${id}/assignments`, data),
   updateAssignment: (id, data) => api.patch(`/departments/assignments/${id}`, data),
   getPerformance: () => api.get('/departments/performance'),
@@ -74,6 +79,9 @@ export const cctvAPI = {
   getStreams: () => api.get('/cctv/streams'),
   addStream: (data) => api.post('/cctv/streams', data),
   analyzeFrame: (data) => api.post('/cctv/analyze', data),
+  uploadVideo: (formData) => api.post('/cctv/upload-video', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }),
   getAlerts: () => api.get('/cctv/alerts'),
 };
 
@@ -83,6 +91,7 @@ export const adminAPI = {
   configurePriorities: (data) => api.post('/admin/priorities/configure', data),
   getUsers: () => api.get('/admin/users'),
   updateUserRole: (id, data) => api.patch(`/admin/users/${id}/role`, data),
+  sendMessage: (data) => api.post('/admin/message', data),
 };
 
 export default api;

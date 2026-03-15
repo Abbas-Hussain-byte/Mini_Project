@@ -5,7 +5,7 @@ const adminController = require('../controllers/adminController');
 // All admin routes require auth + admin role
 router.use(authMiddleware, adminMiddleware);
 
-// GET /api/admin/priorities — Budget-aware prioritized list
+// GET /api/admin/priorities — Budget-aware prioritized list (Knapsack DP)
 router.get('/priorities', adminController.getPriorities);
 
 // POST /api/admin/priorities/configure — Set budget constraints
@@ -16,5 +16,8 @@ router.get('/users', adminController.getUsers);
 
 // PATCH /api/admin/users/:id/role — Change user role
 router.patch('/users/:id/role', adminController.updateUserRole);
+
+// POST /api/admin/message — Send message to dept head
+router.post('/message', adminController.sendMessage);
 
 module.exports = router;

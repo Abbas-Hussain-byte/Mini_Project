@@ -33,7 +33,13 @@ export default function Navbar() {
     { to: '/submit', label: 'Report Issue', icon: <FiPlusCircle /> },
   ];
 
-  const navLinks = isAdmin ? adminLinks : citizenLinks;
+  const deptHeadLinks = [
+    { to: '/', label: 'Home', icon: <FiHome /> },
+    { to: '/departments', label: 'My Department', icon: <FiUsers /> },
+    { to: '/heatmap', label: 'Heatmap', icon: <FiMap /> },
+  ];
+
+  const navLinks = profile?.role === 'admin' ? adminLinks : profile?.role === 'department_head' ? deptHeadLinks : citizenLinks;
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass-card border-b border-civic-border/50">
@@ -71,7 +77,7 @@ export default function Navbar() {
               <div className="flex items-center space-x-3">
                 <div className="text-right">
                   <p className="text-sm font-medium text-white">{profile?.full_name}</p>
-                  <p className="text-xs text-slate-400 capitalize">{profile?.role}</p>
+                  <p className="text-xs capitalize" style={{ color: profile?.role === 'admin' ? '#f59e0b' : profile?.role === 'department_head' ? '#a855f7' : '#06b6d4' }}>{profile?.role?.replace('_', ' ')}</p>
                 </div>
                 <button onClick={handleLogout} className="p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all">
                   <FiLogOut size={18} />

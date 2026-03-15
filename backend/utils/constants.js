@@ -24,6 +24,7 @@ const COMPLAINT_STATUSES = [
   'under_review',
   'assigned',
   'in_progress',
+  'pending_verification',  // dept head marks done → awaits admin verification
   'resolved',
   'rejected',
   'duplicate'
@@ -79,6 +80,14 @@ const SEVERITY_DEADLINE_HOURS = {
   'low': 240         // 10 days
 };
 
+// Estimated cost per severity (for knapsack budget algorithm)
+const SEVERITY_COST = {
+  'critical': 50000,
+  'high': 30000,
+  'medium': 15000,
+  'low': 5000
+};
+
 module.exports = {
   CATEGORIES,
   SEVERITY_LEVELS,
@@ -86,5 +95,6 @@ module.exports = {
   ASSIGNMENT_STATUSES,
   YOLO_LABEL_MAP,
   CATEGORY_TO_DEPARTMENT,
-  SEVERITY_DEADLINE_HOURS
+  SEVERITY_DEADLINE_HOURS,
+  SEVERITY_COST
 };

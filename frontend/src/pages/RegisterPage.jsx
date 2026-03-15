@@ -1,57 +1,96 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FiMail, FiLock, FiUser, FiPhone, FiUserPlus } from 'react-icons/fi';
+import { supabase } from '../services/supabase';
+import { FiUser, FiMail, FiPhone, FiLock, FiUserPlus, FiCheckCircle } from 'react-icons/fi';
 
 export default function RegisterPage() {
-  const [form, setForm] = useState({ full_name: '', email: '', phone: '', password: '', confirm: '' });
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const { signUp, user, profile } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
+  const [formData, setFormData] = useState({
+    fullName: '', phone: '', password: '', confirmPassword: ''
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
 
-  // Redirect if already logged in
   useEffect(() => {
-    if (user && profile) {
-      navigate('/my-dashboard', { replace: true });
-    }
-  }, [user, profile, navigate]);
+    if (user) navigate('/my-dashboard');
+  }, [user, navigate]);
 
-  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  const handleChange = (field) => (e) => {
+    setFormData(prev => ({ ...prev, [field]: e.target.value }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (form.password !== form.confirm) return setError('Passwords do not match');
-    if (form.password.length < 6) return setError('Password must be at least 6 characters');
+
+    if (formData.password !== formData.confirmPassword) {
+      return setError('Passwords do not match');
+    }
+    if (formData.password.length < 6) {
+      return setError('Password must be at least 6 characters');
+    }
+    if (!formData.phone || formData.phone.length < 10) {
+      return setError('Valid phone number is required');
+    }
 
     setLoading(true);
-    const { error: err } = await signUp(form.email, form.password, form.full_name, form.phone);
-    setLoading(false);
-    if (err) return setError(err.message);
-    setSuccess(true);
-    // Navigation will be handled by the useEffect above once profile loads
-  };
+    try {
+      // Generate a proxy email from phone number for Supabase auth
+      const cleanPhone = formData.phone.replace(/[^0-9]/g, '');
+      const proxyEmail = `citizen_${cleanPhone}@civicpulse.local`;
 
-  const fields = [
-    { name: 'full_name', label: 'Full Name', type: 'text', icon: <FiUser />, placeholder: 'Your full name', required: true },
-    { name: 'email', label: 'Email', type: 'email', icon: <FiMail />, placeholder: 'you@example.com', required: true },
-    { name: 'phone', label: 'Phone (optional)', type: 'tel', icon: <FiPhone />, placeholder: '+91 9876543210' },
-    { name: 'password', label: 'Password', type: 'password', icon: <FiLock />, placeholder: '••••••••', required: true },
-    { name: 'confirm', label: 'Confirm Password', type: 'password', icon: <FiLock />, placeholder: '••••••••', required: true },
-  ];
+      const { data, error: authError } = await supabase.auth.signUp({
+        email: proxyEmail,
+        password: formData.password,
+        options: {
+          data: {
+            full_name: formData.fullName,
+            phone: formData.phone
+          }
+        }
+      });
+
+      if (authError) {
+        if (authError.message.includes('already registered')) {
+          throw new Error('An account with this phone number already exists. Please log in.');
+        }
+        throw authError;
+      }
+
+      // Update profile with phone number
+      if (data.user) {
+        await supabase
+          .from('profiles')
+          .update({ phone: formData.phone, full_name: formData.fullName })
+          .eq('id', data.user.id);
+      }
+
+      setSuccess(true);
+    } catch (err) {
+      setError(err.message || 'Registration failed');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 bg-animated">
-        <div className="glass-card w-full max-w-md p-8 animate-fade-in text-center">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-civic-accent to-primary-500 flex items-center justify-center mx-auto mb-4">
-            <FiUserPlus className="w-7 h-7 text-white" />
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', background: 'linear-gradient(135deg, #0a0a1a 0%, #0d1117 50%, #0a1a2a 100%)' }}>
+        <div style={{ background: 'rgba(22, 27, 34, 0.9)', borderRadius: '16px', padding: '2.5rem', maxWidth: '440px', width: '100%', border: '1px solid rgba(46, 160, 67, 0.3)', textAlign: 'center' }}>
+          <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(46, 160, 67, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem', fontSize: '1.8rem' }}>
+            <FiCheckCircle color="#2ea043" />
           </div>
-          <h1 className="text-2xl font-bold text-white mb-2">Account Created!</h1>
-          <p className="text-slate-400 text-sm mb-4">Check your email to verify your account, then log in.</p>
-          <Link to="/login" className="inline-block px-6 py-2.5 rounded-lg bg-gradient-to-r from-civic-accent to-primary-500 text-white font-semibold hover:opacity-90 transition-opacity">
+          <h2 style={{ color: '#f0f6fc', margin: '0 0 0.5rem' }}>Account Created!</h2>
+          <p style={{ color: '#8b949e', marginBottom: '1.5rem' }}>
+            You can now sign in using your phone number.
+          </p>
+          <Link to="/login" style={{
+            display: 'inline-block', padding: '0.85rem 2rem', borderRadius: '10px', border: 'none',
+            background: 'linear-gradient(135deg, #06b6d4, #0891b2)', color: '#fff', textDecoration: 'none', fontWeight: 600
+          }}>
             Go to Login
           </Link>
         </div>
@@ -60,39 +99,78 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-12 bg-animated">
-      <div className="glass-card w-full max-w-md p-8 animate-fade-in">
-        <div className="text-center mb-8">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-civic-accent to-primary-500 flex items-center justify-center mx-auto mb-4">
-            <FiUserPlus className="w-7 h-7 text-white" />
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', background: 'linear-gradient(135deg, #0a0a1a 0%, #0d1117 50%, #0a1a2a 100%)' }}>
+      <div style={{ background: 'rgba(22, 27, 34, 0.9)', borderRadius: '16px', padding: '2.5rem', width: '100%', maxWidth: '440px', border: '1px solid rgba(6, 182, 212, 0.15)', boxShadow: '0 0 40px rgba(6, 182, 212, 0.1)' }}>
+        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+          <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'linear-gradient(135deg, #06b6d4, #7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem', fontSize: '1.5rem' }}>
+            <FiUserPlus color="#fff" />
           </div>
-          <h1 className="text-2xl font-bold text-white">Create Account</h1>
-          <p className="text-slate-400 text-sm mt-1">Join CivicPulse to report civic issues</p>
+          <h2 style={{ color: '#f0f6fc', margin: '0 0 0.5rem', fontSize: '1.5rem' }}>Citizen Registration</h2>
+          <p style={{ color: '#8b949e', fontSize: '0.85rem' }}>Sign up with your phone number to report civic issues</p>
         </div>
 
-        {error && <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{error}</div>}
+        {error && (
+          <div style={{ padding: '0.75rem 1rem', background: 'rgba(248, 81, 73, 0.1)', border: '1px solid rgba(248, 81, 73, 0.3)', borderRadius: '8px', color: '#f85149', fontSize: '0.85rem', marginBottom: '1rem' }}>{error}</div>
+        )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {fields.map(f => (
-            <div key={f.name}>
-              <label className="block text-sm text-slate-300 mb-1.5">{f.label}</label>
-              <div className="relative">
-                <span className="absolute left-3 top-3 text-slate-500">{f.icon}</span>
-                <input type={f.type} name={f.name} value={form[f.name]} onChange={handleChange} required={f.required}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-civic-dark border border-civic-border text-white placeholder:text-slate-500 focus:border-civic-accent focus:ring-1 focus:ring-civic-accent outline-none transition-all"
-                  placeholder={f.placeholder} />
-              </div>
+        <form onSubmit={handleSubmit}>
+          {/* Full Name */}
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', color: '#c9d1d9', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 500 }}>
+              Full Name <span style={{ color: '#f85149' }}>*</span>
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: '1px solid rgba(48, 54, 61, 0.8)', padding: '0 1rem' }}>
+              <FiUser color="#8b949e" />
+              <input type="text" placeholder="Enter your full name" value={formData.fullName} onChange={handleChange('fullName')} required
+                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f0f6fc', padding: '0.85rem 0.75rem', fontSize: '0.95rem' }} />
             </div>
-          ))}
+          </div>
+
+          {/* Phone Number */}
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', color: '#c9d1d9', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 500 }}>
+              Phone Number <span style={{ color: '#f85149' }}>*</span>
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: '1px solid rgba(48, 54, 61, 0.8)', padding: '0 1rem' }}>
+              <FiPhone color="#8b949e" />
+              <input type="tel" placeholder="Enter your phone number" value={formData.phone} onChange={handleChange('phone')} required
+                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f0f6fc', padding: '0.85rem 0.75rem', fontSize: '0.95rem' }} />
+            </div>
+            <p style={{ color: '#6e7681', fontSize: '0.75rem', margin: '0.25rem 0 0 0.5rem' }}>Used for login — no email needed</p>
+          </div>
+
+          {/* Password */}
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', color: '#c9d1d9', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 500 }}>
+              Password <span style={{ color: '#f85149' }}>*</span>
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: '1px solid rgba(48, 54, 61, 0.8)', padding: '0 1rem' }}>
+              <FiLock color="#8b949e" />
+              <input type="password" placeholder="Create a password (min 6 characters)" value={formData.password} onChange={handleChange('password')} required
+                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f0f6fc', padding: '0.85rem 0.75rem', fontSize: '0.95rem' }} />
+            </div>
+          </div>
+
+          {/* Confirm Password */}
+          <div style={{ marginBottom: '1.5rem' }}>
+            <label style={{ display: 'block', color: '#c9d1d9', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 500 }}>
+              Confirm Password <span style={{ color: '#f85149' }}>*</span>
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: '1px solid rgba(48, 54, 61, 0.8)', padding: '0 1rem' }}>
+              <FiLock color="#8b949e" />
+              <input type="password" placeholder="Re-enter your password" value={formData.confirmPassword} onChange={handleChange('confirmPassword')} required
+                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f0f6fc', padding: '0.85rem 0.75rem', fontSize: '0.95rem' }} />
+            </div>
+          </div>
+
           <button type="submit" disabled={loading}
-            className="w-full py-3 rounded-lg bg-gradient-to-r from-civic-accent to-primary-500 text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-50">
+            style={{ width: '100%', padding: '0.85rem', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, #06b6d4, #0891b2)', color: '#fff', fontSize: '1rem', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}>
             {loading ? 'Creating Account...' : 'Create Account'}
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-slate-400">
-          Already have an account?{' '}
-          <Link to="/login" className="text-civic-accent hover:underline">Sign In</Link>
+        <p style={{ textAlign: 'center', color: '#8b949e', marginTop: '1.5rem', fontSize: '0.85rem' }}>
+          Already have an account? <Link to="/login" style={{ color: '#06b6d4', textDecoration: 'none', fontWeight: 500 }}>Sign In</Link>
         </p>
       </div>
     </div>

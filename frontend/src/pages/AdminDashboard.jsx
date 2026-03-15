@@ -1,889 +1,561 @@
 import { useState, useEffect, useCallback } from 'react';
-import { analyticsAPI, complaintsAPI, departmentsAPI, adminAPI } from '../services/api';
-import { Bar, Doughnut, Line } from 'react-chartjs-2';
-import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Filler } from 'chart.js';
-import {
-  FiAlertTriangle, FiCheckCircle, FiClock, FiTrendingUp, FiLoader,
-  FiBarChart2, FiList, FiUsers, FiDollarSign, FiCpu, FiGrid,
-  FiMapPin, FiSearch, FiFilter, FiChevronDown, FiChevronUp,
-  FiShield, FiTarget, FiLayers, FiZap, FiRefreshCw
-} from 'react-icons/fi';
+import { useAuth } from '../context/AuthContext';
+import { complaintsAPI, analyticsAPI, departmentsAPI, adminAPI } from '../services/api';
+import { FiBarChart2, FiAlertTriangle, FiUsers, FiDollarSign, FiCpu, FiBriefcase, FiCheck, FiX, FiMessageSquare, FiSend, FiFilter, FiRefreshCw } from 'react-icons/fi';
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, Title, Tooltip, Legend } from 'chart.js';
+import { Bar, Line, Doughnut } from 'react-chartjs-2';
 
-ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Filler);
-
-const chartOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: { legend: { labels: { color: '#94a3b8', font: { family: 'Inter' } } } },
-  scales: {
-    x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(51,65,85,0.3)' } },
-    y: { ticks: { color: '#64748b' }, grid: { color: 'rgba(51,65,85,0.3)' } }
-  }
-};
-
-const doughnutOptions = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: { legend: { labels: { color: '#94a3b8', font: { family: 'Inter' } } } }
-};
-
-const STATUS_BADGES = {
-  submitted: 'bg-blue-500/20 text-blue-400',
-  under_review: 'bg-indigo-500/20 text-indigo-400',
-  assigned: 'bg-purple-500/20 text-purple-400',
-  in_progress: 'bg-amber-500/20 text-amber-400',
-  resolved: 'bg-emerald-500/20 text-emerald-400',
-  rejected: 'bg-red-500/20 text-red-400',
-  duplicate: 'bg-slate-500/20 text-slate-400',
-};
-
-const SEVERITY_BADGES = {
-  critical: 'bg-red-500/20 text-red-400',
-  high: 'bg-orange-500/20 text-orange-400',
-  medium: 'bg-yellow-500/20 text-yellow-400',
-  low: 'bg-green-500/20 text-green-400',
-};
+ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, Title, Tooltip, Legend);
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: <FiBarChart2 /> },
-  { id: 'complaints', label: 'Complaints', icon: <FiList /> },
-  { id: 'departments', label: 'Departments', icon: <FiGrid /> },
+  { id: 'complaints', label: 'Complaints', icon: <FiAlertTriangle /> },
+  { id: 'departments', label: 'Departments', icon: <FiBriefcase /> },
   { id: 'budget', label: 'Budget', icon: <FiDollarSign /> },
-  { id: 'ai', label: 'AI & ML', icon: <FiCpu /> },
   { id: 'users', label: 'Users', icon: <FiUsers /> },
 ];
 
-// ====================== MAIN COMPONENT ======================
+const STATUS_COLORS = {
+  submitted: '#8b949e', under_review: '#f59e0b', assigned: '#06b6d4',
+  in_progress: '#a855f7', pending_verification: '#eab308', resolved: '#2ea043',
+  rejected: '#f85149', duplicate: '#6e7681'
+};
+const SEV_COLORS = { critical: '#f85149', high: '#f59e0b', medium: '#06b6d4', low: '#2ea043' };
+const CHART_OPTS = { responsive: true, maintainAspectRatio: false, plugins: { legend: { labels: { color: '#c9d1d9', font: { size: 11 } } } }, scales: { x: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(48,54,61,0.3)' } }, y: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(48,54,61,0.3)' } } } };
+const DOUGHNUT_OPTS = { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { color: '#c9d1d9', font: { size: 11 }, padding: 12 } } } };
+const cardStyle = { background: 'rgba(22, 27, 34, 0.8)', borderRadius: '12px', padding: '1.25rem', border: '1px solid rgba(48, 54, 61, 0.5)' };
+
 export default function AdminDashboard() {
+  const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
-  const [loading, setLoading] = useState(true);
-
-  // Overview data
-  const [overview, setOverview] = useState(null);
-  const [trends, setTrends] = useState([]);
-  const [responseTimes, setResponseTimes] = useState(null);
-
-  // Complaints data
   const [complaints, setComplaints] = useState([]);
-  const [complaintsLoading, setComplaintsLoading] = useState(false);
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [severityFilter, setSeverityFilter] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [expandedComplaint, setExpandedComplaint] = useState(null);
-
-  // Departments data
+  const [overview, setOverview] = useState(null);
+  const [deptPerformance, setDeptPerformance] = useState([]);
   const [departments, setDepartments] = useState([]);
-  const [performance, setPerformance] = useState([]);
-  const [expandedDept, setExpandedDept] = useState(null);
-  const [deptAssignments, setDeptAssignments] = useState({});
-
-  // Budget data
-  const [budgetLimit, setBudgetLimit] = useState('');
-  const [prioritized, setPrioritized] = useState(null);
-  const [budgetLoading, setBudgetLoading] = useState(false);
-
-  // AI/ML data
-  const [riskAreas, setRiskAreas] = useState([]);
-  const [duplicateInsights, setDuplicateInsights] = useState(null);
-  const [heatmapData, setHeatmapData] = useState({ points: [], clusters: [] });
-
-  // Users data
   const [users, setUsers] = useState([]);
-  const [usersLoading, setUsersLoading] = useState(false);
+  const [budgetResult, setBudgetResult] = useState(null);
+  const [budgetLimit, setBudgetLimit] = useState('500000');
+  const [loading, setLoading] = useState(false);
+  const [filter, setFilter] = useState({ status: '', severity: '' });
+  const [messageText, setMessageText] = useState('');
+  const [selectedComplaintMsg, setSelectedComplaintMsg] = useState(null);
+  const [complaintUpdates, setComplaintUpdates] = useState({});
+  const [trends, setTrends] = useState([]);
 
-  useEffect(() => {
-    loadOverview();
-  }, []);
-
-  const loadOverview = async () => {
+  const loadData = useCallback(async () => {
+    setLoading(true);
     try {
-      const [ovRes, trRes, rtRes] = await Promise.all([
-        analyticsAPI.getOverview(),
-        analyticsAPI.getTrends(30),
-        analyticsAPI.getResponseTimes()
-      ]);
-      setOverview(ovRes.data);
-      setTrends(trRes.data.trends || []);
-      setResponseTimes(rtRes.data);
+      if (activeTab === 'overview') {
+        const [ov, tr, dp] = await Promise.all([
+          analyticsAPI.getOverview().catch(() => ({ data: {} })),
+          analyticsAPI.getTrends(30).catch(() => ({ data: { trends: [] } })),
+          departmentsAPI.getPerformance().catch(() => ({ data: { performance: [] } }))
+        ]);
+        setOverview(ov.data);
+        setTrends(tr.data.trends || []);
+        setDeptPerformance(dp.data.performance || []);
+      } else if (activeTab === 'complaints') {
+        const params = { limit: 50 };
+        if (filter.status) params.status = filter.status;
+        if (filter.severity) params.severity = filter.severity;
+        const res = await complaintsAPI.getAll(params);
+        setComplaints(res.data.complaints || []);
+      } else if (activeTab === 'departments') {
+        const [dp, perf] = await Promise.all([
+          departmentsAPI.getAll(),
+          departmentsAPI.getPerformance().catch(() => ({ data: { performance: [] } }))
+        ]);
+        setDepartments(dp.data.departments || dp.data || []);
+        setDeptPerformance(perf.data.performance || []);
+      } else if (activeTab === 'users') {
+        const res = await adminAPI.getUsers();
+        setUsers(res.data.users || []);
+      }
+    } catch (err) { console.error('Load error:', err); }
+    setLoading(false);
+  }, [activeTab, filter]);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  const handleStatusUpdate = async (id, status, notes = '') => {
+    try {
+      await complaintsAPI.update(id, { status, notes });
+      loadData();
+    } catch (err) { alert(err.response?.data?.error || 'Update failed'); }
+  };
+
+  const handleVerify = async (id) => {
+    try {
+      await complaintsAPI.verify(id, { notes: 'Resolution verified by admin' });
+      loadData();
+    } catch (err) { alert(err.response?.data?.error || 'Verification failed'); }
+  };
+
+  const handleReject = async (id) => {
+    const reason = prompt('Why is this resolution being rejected?');
+    if (!reason) return;
+    try {
+      await complaintsAPI.rejectResolution(id, { notes: reason });
+      loadData();
+    } catch (err) { alert(err.response?.data?.error || 'Rejection failed'); }
+  };
+
+  const handleSendMessage = async (complaintId) => {
+    if (!messageText.trim()) return;
+    try {
+      await adminAPI.sendMessage({ complaint_id: complaintId, message: messageText });
+      setMessageText('');
+      setSelectedComplaintMsg(null);
+      alert('Message sent to department!');
+    } catch (err) { alert('Message failed'); }
+  };
+
+  const handleRoleChange = async (userId, role) => {
+    if (!confirm(`Change this user's role to ${role}?`)) return;
+    try {
+      await adminAPI.updateUserRole(userId, { role });
+      loadData();
+    } catch (err) { alert('Role update failed'); }
+  };
+
+  const runBudgetOptimization = async () => {
+    setLoading(true);
+    try {
+      const res = await adminAPI.getPriorities({ budget_limit: budgetLimit });
+      setBudgetResult(res.data);
     } catch (err) { console.error(err); }
     setLoading(false);
   };
 
-  const loadComplaints = useCallback(async () => {
-    setComplaintsLoading(true);
+  const loadComplaintUpdates = async (id) => {
     try {
-      const { data } = await complaintsAPI.getAll({ sort_by: 'created_at', order: 'desc', limit: 100 });
-      setComplaints(data.complaints || []);
-    } catch (err) { console.error(err); }
-    setComplaintsLoading(false);
-  }, []);
-
-  const loadDepartments = useCallback(async () => {
-    try {
-      const [deptRes, perfRes] = await Promise.all([
-        departmentsAPI.getAll(),
-        departmentsAPI.getPerformance()
-      ]);
-      setDepartments(deptRes.data.departments || []);
-      setPerformance(perfRes.data.performance || []);
-    } catch (err) { console.error(err); }
-  }, []);
-
-  const loadAIData = useCallback(async () => {
-    try {
-      const [riskRes, dupRes, heatRes] = await Promise.all([
-        analyticsAPI.getRiskAreas(),
-        analyticsAPI.getDuplicates(),
-        analyticsAPI.getHeatmap()
-      ]);
-      setRiskAreas(riskRes.data.riskAreas || riskRes.data.risk_areas || []);
-      setDuplicateInsights(dupRes.data);
-      setHeatmapData({
-        points: heatRes.data.points || [],
-        clusters: heatRes.data.clusters || []
-      });
-    } catch (err) { console.error(err); }
-  }, []);
-
-  const loadUsers = useCallback(async () => {
-    setUsersLoading(true);
-    try {
-      const { data } = await adminAPI.getUsers();
-      setUsers(data.users || []);
-    } catch (err) { console.error(err); }
-    setUsersLoading(false);
-  }, []);
-
-  // Load data when tab changes
-  useEffect(() => {
-    if (activeTab === 'complaints' && complaints.length === 0) loadComplaints();
-    if (activeTab === 'departments' && departments.length === 0) loadDepartments();
-    if (activeTab === 'ai' && riskAreas.length === 0) loadAIData();
-    if (activeTab === 'users' && users.length === 0) loadUsers();
-  }, [activeTab]);
-
-  // =================== ACTIONS ===================
-  const updateComplaintStatus = async (complaintId, newStatus) => {
-    try {
-      await complaintsAPI.update(complaintId, { status: newStatus });
-      setComplaints(complaints.map(c => c.id === complaintId ? { ...c, status: newStatus } : c));
+      const res = await complaintsAPI.getById(id);
+      setComplaintUpdates(prev => ({ ...prev, [id]: res.data.complaint?.complaint_updates || [] }));
     } catch (err) { console.error(err); }
   };
 
-  const runBudgetPrioritization = async () => {
-    if (!budgetLimit) return;
-    setBudgetLoading(true);
-    try {
-      const { data } = await adminAPI.getPriorities({ budget_limit: budgetLimit });
-      setPrioritized(data);
-    } catch (err) { console.error(err); }
-    setBudgetLoading(false);
-  };
-
-  const updateUserRole = async (userId, newRole) => {
-    try {
-      await adminAPI.updateUserRole(userId, { role: newRole });
-      setUsers(users.map(u => u.id === userId ? { ...u, role: newRole } : u));
-    } catch (err) { console.error(err); }
-  };
-
-  const toggleDeptExpand = async (deptId) => {
-    if (expandedDept === deptId) return setExpandedDept(null);
-    setExpandedDept(deptId);
-    if (!deptAssignments[deptId]) {
-      try {
-        const { data } = await departmentsAPI.getAssignments(deptId, { limit: 10 });
-        setDeptAssignments({ ...deptAssignments, [deptId]: data.assignments || [] });
-      } catch (err) { console.error(err); }
-    }
-  };
-
-  const updateAssignment = async (assignmentId, status) => {
-    try {
-      await departmentsAPI.updateAssignment(assignmentId, { status });
-      if (expandedDept) {
-        const { data } = await departmentsAPI.getAssignments(expandedDept, { limit: 10 });
-        setDeptAssignments({ ...deptAssignments, [expandedDept]: data.assignments || [] });
-      }
-      loadDepartments();
-    } catch (err) { console.error(err); }
-  };
-
-  // =================== FILTERED COMPLAINTS ===================
-  const filteredComplaints = complaints.filter(c => {
-    if (statusFilter !== 'all' && c.status !== statusFilter) return false;
-    if (severityFilter !== 'all' && c.severity !== severityFilter) return false;
-    if (searchQuery && !c.title?.toLowerCase().includes(searchQuery.toLowerCase()) && !c.description?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    return true;
-  });
-
-  if (loading) return <div className="flex items-center justify-center min-h-screen"><FiLoader className="w-8 h-8 text-civic-accent animate-spin" /></div>;
-
-  // =================== CHART DATA ===================
-  const categoryData = {
-    labels: Object.keys(overview?.byCategory || {}),
+  // ========== BUILD CHART DATA ==========
+  const statusData = overview?.byStatus || {};
+  const statusChartData = {
+    labels: Object.keys(statusData).map(s => s.replace(/_/g, ' ')),
     datasets: [{
-      data: Object.values(overview?.byCategory || {}),
-      backgroundColor: ['#38bdf8', '#818cf8', '#c084fc', '#f472b6', '#fb923c', '#22c55e', '#f59e0b', '#ef4444', '#06b6d4', '#8b5cf6'],
-      borderWidth: 0,
+      data: Object.values(statusData),
+      backgroundColor: Object.keys(statusData).map(s => STATUS_COLORS[s] || '#8b949e'),
+      borderWidth: 0
     }]
   };
 
-  const severityData = {
-    labels: Object.keys(overview?.bySeverity || {}),
+  const sevData = overview?.bySeverity || {};
+  const sevChartData = {
+    labels: Object.keys(sevData).map(s => s.charAt(0).toUpperCase() + s.slice(1)),
     datasets: [{
-      label: 'Count',
-      data: Object.values(overview?.bySeverity || {}),
-      backgroundColor: ['#22c55e', '#f59e0b', '#f97316', '#ef4444'],
-      borderRadius: 8,
-      borderWidth: 0,
+      data: Object.values(sevData),
+      backgroundColor: Object.keys(sevData).map(s => SEV_COLORS[s] || '#8b949e'),
+      borderWidth: 0
     }]
   };
 
-  const trendData = {
-    labels: trends.map(t => t.date.split('-').slice(1).join('/')),
+  const catData = overview?.byCategory || {};
+  const catChartData = {
+    labels: Object.keys(catData).slice(0, 8).map(c => c.replace(/_/g, ' ')),
     datasets: [{
-      label: 'Complaints',
+      label: 'Complaints by Category',
+      data: Object.values(catData).slice(0, 8),
+      backgroundColor: 'rgba(6, 182, 212, 0.6)',
+      borderColor: '#06b6d4',
+      borderWidth: 1,
+      borderRadius: 4
+    }]
+  };
+
+  const trendChartData = {
+    labels: trends.map(t => new Date(t.date).toLocaleDateString('en', { month: 'short', day: 'numeric' })),
+    datasets: [{
+      label: 'Daily Complaints',
       data: trends.map(t => t.count),
-      borderColor: '#38bdf8',
-      backgroundColor: 'rgba(56, 189, 248, 0.1)',
-      fill: true, tension: 0.4, borderWidth: 2, pointRadius: 3,
+      borderColor: '#a855f7',
+      backgroundColor: 'rgba(168, 85, 247, 0.1)',
+      fill: true,
+      tension: 0.4,
+      pointRadius: 2
     }]
   };
 
-  const statCards = [
-    { label: 'Total Complaints', value: overview?.total || 0, icon: <FiAlertTriangle />, color: 'text-civic-accent' },
-    { label: 'Resolved', value: overview?.resolved || 0, icon: <FiCheckCircle />, color: 'text-civic-success' },
-    { label: 'Resolution Rate', value: `${overview?.resolutionRate || 0}%`, icon: <FiTrendingUp />, color: 'text-primary-400' },
-    { label: 'This Week', value: overview?.recentCount || 0, icon: <FiClock />, color: 'text-civic-warning' },
-  ];
+  const deptChartData = {
+    labels: deptPerformance.map(d => d.name?.slice(0, 15) || d.code),
+    datasets: [
+      {
+        label: 'Completed',
+        data: deptPerformance.map(d => d.completed || 0),
+        backgroundColor: 'rgba(46, 160, 67, 0.7)',
+        borderRadius: 4
+      },
+      {
+        label: 'Overdue',
+        data: deptPerformance.map(d => d.overdue || 0),
+        backgroundColor: 'rgba(248, 81, 73, 0.7)',
+        borderRadius: 4
+      }
+    ]
+  };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-white mb-1">Admin Dashboard</h1>
-          <p className="text-slate-400 text-sm">CivicPulse administration & AI intelligence center</p>
+    <div style={{ minHeight: '100vh', padding: '5rem 1rem 2rem', background: 'linear-gradient(135deg, #0a0a1a 0%, #0d1117 50%, #0a1a2a 100%)' }}>
+      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+        <h1 style={{ color: '#f0f6fc', fontSize: '1.75rem', marginBottom: '0.25rem' }}>Admin Command Center</h1>
+        <p style={{ color: '#8b949e', marginBottom: '1.5rem' }}>Welcome, {profile?.full_name || 'Admin'}</p>
+
+        {/* Tabs */}
+        <div style={{ display: 'flex', gap: '0.25rem', background: 'rgba(22, 27, 34, 0.9)', borderRadius: '12px', padding: '4px', marginBottom: '1.5rem', overflowX: 'auto', border: '1px solid rgba(48, 54, 61, 0.5)' }}>
+          {TABS.map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.6rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap',
+                background: activeTab === tab.id ? 'rgba(6, 182, 212, 0.2)' : 'transparent',
+                color: activeTab === tab.id ? '#06b6d4' : '#8b949e' }}>
+              {tab.icon} {tab.label}
+            </button>
+          ))}
         </div>
-      </div>
 
-      {/* Tab Navigation */}
-      <div className="flex gap-1 mb-8 overflow-x-auto pb-2 scrollbar-hide">
-        {TABS.map(tab => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
-              activeTab === tab.id
-                ? 'bg-civic-accent/20 text-civic-accent border border-civic-accent/30'
-                : 'text-slate-400 hover:text-white hover:bg-white/5 border border-transparent'
-            }`}>
-            {tab.icon} {tab.label}
-          </button>
-        ))}
-      </div>
+        {loading && <p style={{ color: '#8b949e', textAlign: 'center', padding: '2rem' }}>Loading...</p>}
 
-      {/* =================== OVERVIEW TAB =================== */}
-      {activeTab === 'overview' && (
-        <div className="animate-fade-in">
-          {/* Stat Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            {statCards.map((s, i) => (
-              <div key={i} className="glass-card p-5 animate-slide-up" style={{ animationDelay: `${i * 0.05}s` }}>
-                <div className={`w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center ${s.color} mb-3`}>{s.icon}</div>
-                <p className="text-2xl font-bold text-white">{s.value}</p>
-                <p className="text-xs text-slate-400 mt-1">{s.label}</p>
+        {/* ===== OVERVIEW TAB ===== */}
+        {activeTab === 'overview' && !loading && (
+          <div>
+            {/* Stat Cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+              {[
+                { label: 'Total Complaints', value: overview?.total || 0, color: '#06b6d4' },
+                { label: 'Pending Verification', value: statusData.pending_verification || 0, color: '#eab308' },
+                { label: 'In Progress', value: statusData.in_progress || 0, color: '#a855f7' },
+                { label: 'Resolved', value: statusData.resolved || 0, color: '#2ea043' },
+                { label: 'Critical', value: sevData.critical || 0, color: '#f85149' },
+              ].map((stat, i) => (
+                <div key={i} style={{ ...cardStyle, borderLeft: `3px solid ${stat.color}` }}>
+                  <p style={{ color: '#8b949e', fontSize: '0.75rem', margin: '0 0 0.25rem' }}>{stat.label}</p>
+                  <p style={{ color: '#f0f6fc', fontSize: '1.75rem', fontWeight: 700, margin: 0 }}>{stat.value}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Charts Row 1: Status Pie + Severity Pie */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+              <div style={{ ...cardStyle }}>
+                <h3 style={{ color: '#f0f6fc', margin: '0 0 0.75rem', fontSize: '0.95rem' }}>Complaints by Status</h3>
+                <div style={{ height: '250px' }}>
+                  {Object.keys(statusData).length > 0 ? (
+                    <Doughnut data={statusChartData} options={DOUGHNUT_OPTS} />
+                  ) : <p style={{ color: '#6e7681', textAlign: 'center', paddingTop: '4rem' }}>No data yet</p>}
+                </div>
               </div>
-            ))}
-          </div>
-
-          {/* Charts */}
-          <div className="grid lg:grid-cols-2 gap-6 mb-8">
-            <div className="glass-card p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Complaint Trends (30 days)</h3>
-              <div className="h-64"><Line data={trendData} options={chartOptions} /></div>
-            </div>
-            <div className="glass-card p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">By Severity</h3>
-              <div className="h-64"><Bar data={severityData} options={chartOptions} /></div>
-            </div>
-          </div>
-
-          <div className="grid lg:grid-cols-2 gap-6">
-            <div className="glass-card p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">By Category</h3>
-              <div className="h-64 flex items-center justify-center"><Doughnut data={categoryData} options={doughnutOptions} /></div>
-            </div>
-            <div className="glass-card p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Response Times</h3>
-              <div className="space-y-4 mt-4">
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-300">Average Resolution</span>
-                  <span className="text-2xl font-bold text-civic-accent">{responseTimes?.averageHours || 0}h</span>
+              <div style={{ ...cardStyle }}>
+                <h3 style={{ color: '#f0f6fc', margin: '0 0 0.75rem', fontSize: '0.95rem' }}>Complaints by Severity</h3>
+                <div style={{ height: '250px' }}>
+                  {Object.keys(sevData).length > 0 ? (
+                    <Doughnut data={sevChartData} options={DOUGHNUT_OPTS} />
+                  ) : <p style={{ color: '#6e7681', textAlign: 'center', paddingTop: '4rem' }}>No data yet</p>}
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-300">Total Resolved</span>
-                  <span className="text-lg font-semibold text-civic-success">{responseTimes?.totalResolved || 0}</span>
+              </div>
+            </div>
+
+            {/* Charts Row 2: Category Bar + Trend Line */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+              <div style={{ ...cardStyle }}>
+                <h3 style={{ color: '#f0f6fc', margin: '0 0 0.75rem', fontSize: '0.95rem' }}>Top Categories</h3>
+                <div style={{ height: '250px' }}>
+                  {Object.keys(catData).length > 0 ? (
+                    <Bar data={catChartData} options={CHART_OPTS} />
+                  ) : <p style={{ color: '#6e7681', textAlign: 'center', paddingTop: '4rem' }}>No data yet</p>}
                 </div>
-                {responseTimes?.bySeverity && Object.entries(responseTimes.bySeverity).map(([sev, data]) => (
-                  <div key={sev} className="flex justify-between items-center text-sm">
-                    <span className="capitalize text-slate-400">{sev}</span>
-                    <span className="text-slate-300">{data.avgHours}h avg ({data.count} resolved)</span>
-                  </div>
+              </div>
+              <div style={{ ...cardStyle }}>
+                <h3 style={{ color: '#f0f6fc', margin: '0 0 0.75rem', fontSize: '0.95rem' }}>30-Day Trend</h3>
+                <div style={{ height: '250px' }}>
+                  {trends.length > 0 ? (
+                    <Line data={trendChartData} options={CHART_OPTS} />
+                  ) : <p style={{ color: '#6e7681', textAlign: 'center', paddingTop: '4rem' }}>No trend data yet</p>}
+                </div>
+              </div>
+            </div>
+
+            {/* Department Performance Bar */}
+            {deptPerformance.length > 0 && (
+              <div style={{ ...cardStyle }}>
+                <h3 style={{ color: '#f0f6fc', margin: '0 0 0.75rem', fontSize: '0.95rem' }}>Department Performance</h3>
+                <div style={{ height: '280px' }}>
+                  <Bar data={deptChartData} options={{ ...CHART_OPTS, indexAxis: 'y' }} />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ===== COMPLAINTS TAB ===== */}
+        {activeTab === 'complaints' && (
+          <div>
+            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <FiFilter color="#8b949e" />
+              <select value={filter.status} onChange={e => setFilter(f => ({ ...f, status: e.target.value }))}
+                style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(48, 54, 61, 0.8)', background: 'rgba(0,0,0,0.3)', color: '#c9d1d9', fontSize: '0.85rem' }}>
+                <option value="">All Statuses</option>
+                {Object.keys(STATUS_COLORS).map(s => (
+                  <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
                 ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* =================== COMPLAINTS TAB =================== */}
-      {activeTab === 'complaints' && (
-        <div className="animate-fade-in">
-          {/* Filters */}
-          <div className="glass-card p-4 mb-6">
-            <div className="flex flex-wrap gap-3 items-center">
-              <div className="relative flex-1 min-w-[200px]">
-                <FiSearch className="absolute left-3 top-3 text-slate-500" size={16} />
-                <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Search complaints..."
-                  className="w-full pl-10 pr-4 py-2.5 rounded-lg bg-civic-dark border border-civic-border text-white placeholder:text-slate-500 focus:border-civic-accent outline-none text-sm" />
-              </div>
-              <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-                className="px-3 py-2.5 rounded-lg bg-civic-dark border border-civic-border text-white text-sm outline-none focus:border-civic-accent">
-                <option value="all">All Status</option>
-                {Object.keys(STATUS_BADGES).map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
               </select>
-              <select value={severityFilter} onChange={e => setSeverityFilter(e.target.value)}
-                className="px-3 py-2.5 rounded-lg bg-civic-dark border border-civic-border text-white text-sm outline-none focus:border-civic-accent">
-                <option value="all">All Severity</option>
-                {Object.keys(SEVERITY_BADGES).map(s => <option key={s} value={s}>{s}</option>)}
+              <select value={filter.severity} onChange={e => setFilter(f => ({ ...f, severity: e.target.value }))}
+                style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(48, 54, 61, 0.8)', background: 'rgba(0,0,0,0.3)', color: '#c9d1d9', fontSize: '0.85rem' }}>
+                <option value="">All Severities</option>
+                {['low', 'medium', 'high', 'critical'].map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
               </select>
-              <button onClick={loadComplaints} className="p-2.5 rounded-lg bg-civic-accent/10 text-civic-accent hover:bg-civic-accent/20 transition-all">
-                <FiRefreshCw size={16} />
+              <button onClick={loadData} style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: 'rgba(6, 182, 212, 0.2)', color: '#06b6d4', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.85rem' }}>
+                <FiRefreshCw size={14} /> Refresh
               </button>
+              <span style={{ color: '#6e7681', fontSize: '0.8rem' }}>({complaints.length} results)</span>
             </div>
-          </div>
 
-          <p className="text-xs text-slate-500 mb-3">{filteredComplaints.length} complaint{filteredComplaints.length !== 1 ? 's' : ''} found</p>
-
-          {complaintsLoading ? (
-            <div className="flex items-center justify-center py-20"><FiLoader className="w-6 h-6 text-civic-accent animate-spin" /></div>
-          ) : (
-            <div className="space-y-3">
-              {filteredComplaints.map(c => (
-                <div key={c.id} className="glass-card overflow-hidden">
-                  <div className="p-4 cursor-pointer hover:bg-white/[0.02] transition-colors" onClick={() => setExpandedComplaint(expandedComplaint === c.id ? null : c.id)}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <h4 className="font-semibold text-white text-sm">{c.title}</h4>
-                          <span className={`px-2 py-0.5 rounded-full text-xs ${SEVERITY_BADGES[c.severity]}`}>{c.severity}</span>
-                          <span className={`px-2 py-0.5 rounded-full text-xs ${STATUS_BADGES[c.status]}`}>{c.status?.replace('_', ' ')}</span>
-                        </div>
-                        <p className="text-xs text-slate-400 line-clamp-1">{c.description}</p>
-                        <div className="flex items-center gap-3 mt-2 text-xs text-slate-500 flex-wrap">
-                          <span><FiClock size={11} className="inline mr-1" />{new Date(c.created_at).toLocaleDateString()}</span>
-                          {c.category && <span className="capitalize">{c.category.replace('_', ' ')}</span>}
-                          {c.departments?.name && <span className="text-civic-accent">→ {c.departments.name}</span>}
-                          <span>Score: {(c.priority_score * 100).toFixed(0)}%</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        {/* Status management buttons */}
-                        {c.status === 'submitted' && (
-                          <button onClick={(e) => { e.stopPropagation(); updateComplaintStatus(c.id, 'under_review'); }}
-                            className="px-2 py-1 rounded text-xs bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30">Review</button>
-                        )}
-                        {c.status === 'under_review' && (
-                          <button onClick={(e) => { e.stopPropagation(); updateComplaintStatus(c.id, 'assigned'); }}
-                            className="px-2 py-1 rounded text-xs bg-purple-500/20 text-purple-400 hover:bg-purple-500/30">Assign</button>
-                        )}
-                        {c.status === 'assigned' && (
-                          <button onClick={(e) => { e.stopPropagation(); updateComplaintStatus(c.id, 'in_progress'); }}
-                            className="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-400 hover:bg-amber-500/30">Start</button>
-                        )}
-                        {c.status === 'in_progress' && (
-                          <button onClick={(e) => { e.stopPropagation(); updateComplaintStatus(c.id, 'resolved'); }}
-                            className="px-2 py-1 rounded text-xs bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30">Resolve</button>
-                        )}
-                        {expandedComplaint === c.id ? <FiChevronUp className="text-slate-400" /> : <FiChevronDown className="text-slate-400" />}
-                      </div>
+            {complaints.map(c => (
+              <div key={c.id} style={{ ...cardStyle, marginBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div style={{ flex: 1, minWidth: '200px' }}>
+                    <h3 style={{ color: '#f0f6fc', margin: '0 0 0.25rem', fontSize: '1rem' }}>{c.title}</h3>
+                    <p style={{ color: '#8b949e', fontSize: '0.8rem', margin: '0 0 0.5rem' }}>{c.description?.slice(0, 120)}{c.description?.length > 120 ? '...' : ''}</p>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: (STATUS_COLORS[c.status] || '#8b949e') + '20', color: STATUS_COLORS[c.status] || '#8b949e' }}>{c.status?.replace(/_/g, ' ')}</span>
+                      <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: (SEV_COLORS[c.severity] || '#8b949e') + '20', color: SEV_COLORS[c.severity] || '#8b949e' }}>{c.severity}</span>
+                      <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(139,148,158,0.1)', color: '#8b949e' }}>{c.category?.replace(/_/g, ' ')}</span>
+                      {c.departments?.name && <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(6,182,212,0.1)', color: '#06b6d4' }}>{c.departments.name}</span>}
+                      {c.priority_score > 0 && <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(168,85,247,0.1)', color: '#a855f7' }}>Score: {c.priority_score?.toFixed(3)}</span>}
                     </div>
                   </div>
 
-                  {expandedComplaint === c.id && (
-                    <div className="border-t border-civic-border/50 p-4 animate-slide-up bg-white/[0.02]">
-                      <div className="grid md:grid-cols-3 gap-4">
-                        <div>
-                          <h5 className="text-xs font-medium text-slate-300 mb-2">AI Analysis</h5>
-                          {c.ai_detected_labels?.length > 0 ? (
-                            <div className="flex flex-wrap gap-1 mb-2">
-                              {c.ai_detected_labels.map((l, i) => (
-                                <span key={i} className="px-2 py-0.5 rounded bg-civic-accent/10 text-civic-accent text-xs">{l}</span>
-                              ))}
-                            </div>
-                          ) : <p className="text-xs text-slate-500">Pending</p>}
-                          {c.ai_analysis && Object.keys(c.ai_analysis).length > 0 && (
-                            <div className="text-xs text-slate-400 space-y-1 mt-2">
-                              {c.ai_analysis.text_category && <p>Category: <span className="text-white">{c.ai_analysis.text_category}</span></p>}
-                              {c.ai_analysis.text_severity && <p>AI Severity: <span className="text-white">{c.ai_analysis.text_severity}</span></p>}
-                              {c.ai_analysis.hazards_detected && <p>Hazards: <span className="text-white">{c.ai_analysis.hazards_detected.join(', ')}</span></p>}
-                              {c.ai_analysis.duplicate_check && <p>Duplicate: <span className="text-white">{c.ai_analysis.duplicate_check.is_duplicate ? 'Yes' : 'No'}</span></p>}
-                            </div>
-                          )}
+                  {/* Action Buttons */}
+                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    {c.status === 'pending_verification' && (
+                      <>
+                        <button onClick={() => handleVerify(c.id)}
+                          style={{ padding: '0.4rem 0.65rem', borderRadius: '6px', border: 'none', background: 'rgba(46,160,67,0.2)', color: '#2ea043', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <FiCheck size={13} /> Verify
+                        </button>
+                        <button onClick={() => handleReject(c.id)}
+                          style={{ padding: '0.4rem 0.65rem', borderRadius: '6px', border: 'none', background: 'rgba(248,81,73,0.2)', color: '#f85149', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <FiX size={13} /> Reject
+                        </button>
+                      </>
+                    )}
+
+                    {!['resolved', 'rejected', 'duplicate', 'pending_verification'].includes(c.status) && (
+                      <select onChange={(e) => { if (e.target.value) handleStatusUpdate(c.id, e.target.value); e.target.value = ''; }}
+                        defaultValue=""
+                        style={{ padding: '0.4rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(48,54,61,0.8)', background: 'rgba(0,0,0,0.3)', color: '#c9d1d9', fontSize: '0.75rem', cursor: 'pointer' }}>
+                        <option value="" disabled>Change status...</option>
+                        <option value="under_review">Under Review</option>
+                        <option value="assigned">Assigned</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="pending_verification">Pending Verification</option>
+                        <option value="resolved">Resolve (Admin Only)</option>
+                      </select>
+                    )}
+
+                    <button onClick={() => { setSelectedComplaintMsg(selectedComplaintMsg === c.id ? null : c.id); loadComplaintUpdates(c.id); }}
+                      style={{ padding: '0.4rem 0.65rem', borderRadius: '6px', border: 'none', background: 'rgba(168,85,247,0.2)', color: '#a855f7', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <FiMessageSquare size={13} /> Messages
+                    </button>
+                  </div>
+                </div>
+
+                {/* Messages Panel */}
+                {selectedComplaintMsg === c.id && (
+                  <div style={{ marginTop: '0.75rem', padding: '0.75rem', borderTop: '1px solid rgba(48,54,61,0.5)', background: 'rgba(0,0,0,0.15)', borderRadius: '0 0 8px 8px' }}>
+                    {/* Existing updates/messages */}
+                    <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '0.5rem' }}>
+                      {(complaintUpdates[c.id] || []).map((upd, i) => (
+                        <div key={i} style={{ padding: '0.4rem 0.6rem', marginBottom: '0.3rem', borderRadius: '6px', background: upd.comment?.startsWith('[ADMIN MESSAGE]') ? 'rgba(168,85,247,0.08)' : 'rgba(0,0,0,0.15)', borderLeft: `2px solid ${upd.comment?.startsWith('[ADMIN MESSAGE]') ? '#a855f7' : '#48535f'}` }}>
+                          <p style={{ color: '#c9d1d9', fontSize: '0.8rem', margin: 0 }}>{upd.comment}</p>
+                          <p style={{ color: '#6e7681', fontSize: '0.65rem', margin: '0.15rem 0 0' }}>
+                            {upd.profiles?.full_name || 'System'} • {new Date(upd.created_at).toLocaleString()}
+                            {upd.old_status && upd.new_status && ` • ${upd.old_status} → ${upd.new_status}`}
+                          </p>
                         </div>
-                        <div>
-                          <h5 className="text-xs font-medium text-slate-300 mb-2">Location</h5>
-                          <p className="text-xs text-slate-400">{c.address || 'No address'}</p>
-                          <p className="text-xs text-slate-500 mt-1">Lat: {c.latitude}, Lng: {c.longitude}</p>
-                          <h5 className="text-xs font-medium text-slate-300 mt-3 mb-1">Department</h5>
-                          <p className="text-xs text-civic-accent">{c.departments?.name || 'Unassigned'}</p>
-                        </div>
-                        <div>
-                          <h5 className="text-xs font-medium text-slate-300 mb-2">Images</h5>
-                          {c.image_urls?.length > 0 ? (
-                            <div className="flex gap-2 overflow-x-auto">
-                              {c.image_urls.map((url, i) => (
-                                <img key={i} src={url} alt="" className="w-16 h-16 rounded-lg object-cover border border-civic-border" />
-                              ))}
-                            </div>
-                          ) : <p className="text-xs text-slate-500">No images</p>}
-                        </div>
-                      </div>
+                      ))}
+                      {(!complaintUpdates[c.id] || complaintUpdates[c.id].length === 0) && (
+                        <p style={{ color: '#6e7681', fontSize: '0.8rem', margin: 0 }}>No messages yet</p>
+                      )}
+                    </div>
+                    {/* Send new message */}
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <input type="text" placeholder="Type a message to the department head..." value={messageText} onChange={e => setMessageText(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleSendMessage(c.id)}
+                        style={{ flex: 1, padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid rgba(48,54,61,0.8)', background: 'rgba(0,0,0,0.3)', color: '#f0f6fc', fontSize: '0.85rem', outline: 'none' }} />
+                      <button onClick={() => handleSendMessage(c.id)}
+                        style={{ padding: '0.5rem 0.75rem', borderRadius: '6px', border: 'none', background: 'rgba(168,85,247,0.3)', color: '#a855f7', cursor: 'pointer' }}>
+                        <FiSend />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+            {complaints.length === 0 && !loading && (
+              <p style={{ color: '#8b949e', textAlign: 'center', padding: '2rem' }}>No complaints found with current filters.</p>
+            )}
+          </div>
+        )}
+
+        {/* ===== DEPARTMENTS TAB ===== */}
+        {activeTab === 'departments' && (
+          <div>
+            {/* Department Performance Chart */}
+            {deptPerformance.length > 0 && (
+              <div style={{ ...cardStyle, marginBottom: '1.5rem' }}>
+                <h3 style={{ color: '#f0f6fc', margin: '0 0 0.75rem', fontSize: '0.95rem' }}>Department Performance Comparison</h3>
+                <div style={{ height: '280px' }}>
+                  <Bar data={deptChartData} options={CHART_OPTS} />
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
+              {departments.map(dept => (
+                <div key={dept.id} style={{ ...cardStyle }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <div>
+                      <h3 style={{ color: '#f0f6fc', margin: '0 0 0.15rem', fontSize: '1.05rem' }}>{dept.name}</h3>
+                      <p style={{ color: '#06b6d4', fontSize: '0.7rem', margin: 0 }}>{dept.code}</p>
+                    </div>
+                    <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '4px',
+                      background: dept.is_active ? 'rgba(46,160,67,0.15)' : 'rgba(248,81,73,0.15)',
+                      color: dept.is_active ? '#2ea043' : '#f85149' }}>
+                      {dept.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.4rem', marginBottom: '0.75rem' }}>
+                    <div style={{ padding: '0.4rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', textAlign: 'center' }}>
+                      <p style={{ color: '#06b6d4', fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>{dept.workerCount || dept.total_workers || 0}</p>
+                      <p style={{ color: '#6e7681', fontSize: '0.65rem', margin: 0 }}>Workers</p>
+                    </div>
+                    <div style={{ padding: '0.4rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', textAlign: 'center' }}>
+                      <p style={{ color: '#a855f7', fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>{dept.activeAssignments || 0}</p>
+                      <p style={{ color: '#6e7681', fontSize: '0.65rem', margin: 0 }}>Active</p>
+                    </div>
+                    <div style={{ padding: '0.4rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', textAlign: 'center' }}>
+                      <p style={{ color: '#2ea043', fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>{dept.completionRate || 0}%</p>
+                      <p style={{ color: '#6e7681', fontSize: '0.65rem', margin: 0 }}>Done</p>
+                    </div>
+                  </div>
+
+                  {dept.head_name && (
+                    <div style={{ padding: '0.5rem', background: 'rgba(245,158,11,0.05)', borderRadius: '6px', border: '1px solid rgba(245,158,11,0.15)' }}>
+                      <p style={{ color: '#f59e0b', fontSize: '0.65rem', margin: '0 0 0.2rem', fontWeight: 600 }}>Department Head</p>
+                      <p style={{ color: '#c9d1d9', fontSize: '0.8rem', margin: 0 }}>{dept.head_name}</p>
+                      {dept.head_email && <p style={{ color: '#8b949e', fontSize: '0.7rem', margin: '0.1rem 0 0' }}>{dept.head_email}</p>}
                     </div>
                   )}
                 </div>
               ))}
             </div>
-          )}
-        </div>
-      )}
-
-      {/* =================== DEPARTMENTS TAB =================== */}
-      {activeTab === 'departments' && (
-        <div className="animate-fade-in">
-          {/* Performance Summary */}
-          <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
-            {performance.slice(0, 8).map((dept, i) => (
-              <div key={i} className="glass-card p-4 animate-slide-up" style={{ animationDelay: `${i * 0.05}s` }}>
-                <h4 className="text-sm font-medium text-white truncate">{dept.name}</h4>
-                <div className="flex items-baseline gap-2 mt-2">
-                  <span className="text-2xl font-bold text-civic-accent">{dept.completionRate}%</span>
-                  <span className="text-xs text-slate-500">completion</span>
-                </div>
-                <div className="flex items-center gap-3 mt-2 text-xs text-slate-400">
-                  <span>{dept.totalAssignments} total</span>
-                  <span className="text-civic-success">{dept.completed} done</span>
-                  {dept.overdue > 0 && <span className="text-red-400">{dept.overdue} overdue</span>}
-                </div>
-                <div className="mt-2 h-1.5 rounded-full bg-slate-700 overflow-hidden">
-                  <div className="h-full rounded-full bg-gradient-to-r from-civic-accent to-primary-500 transition-all" style={{ width: `${dept.completionRate}%` }} />
-                </div>
-              </div>
-            ))}
           </div>
+        )}
 
-          {/* Department List with Expandable Assignments */}
-          <div className="space-y-3">
-            {departments.map(dept => (
-              <div key={dept.id} className="glass-card overflow-hidden">
-                <div className="p-5 cursor-pointer hover:bg-white/[0.02] transition-colors" onClick={() => toggleDeptExpand(dept.id)}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-civic-accent/10 flex items-center justify-center">
-                        <FiUsers className="w-5 h-5 text-civic-accent" />
-                      </div>
-                      <div>
-                        <h3 className="font-semibold text-white">{dept.name}</h3>
-                        <p className="text-xs text-slate-400">{dept.code} • {dept.workerCount} workers • {dept.activeAssignments} active</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="text-right hidden sm:block">
-                        <p className="text-sm font-medium text-white">{dept.completedAssignments}/{dept.totalAssignments}</p>
-                        <p className="text-xs text-slate-500">completed</p>
-                      </div>
-                      {expandedDept === dept.id ? <FiChevronUp className="text-slate-400" /> : <FiChevronDown className="text-slate-400" />}
-                    </div>
-                  </div>
+        {/* ===== BUDGET TAB ===== */}
+        {activeTab === 'budget' && (
+          <div>
+            <div style={{ ...cardStyle, marginBottom: '1rem' }}>
+              <h3 style={{ color: '#f0f6fc', margin: '0 0 0.5rem' }}>Budget Optimization (0/1 Knapsack)</h3>
+              <p style={{ color: '#8b949e', fontSize: '0.8rem', margin: '0 0 1rem' }}>
+                Uses dynamic programming to find the optimal set of complaints to resolve within your budget.
+              </p>
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <div>
+                  <label style={{ color: '#c9d1d9', fontSize: '0.8rem', display: 'block', marginBottom: '0.3rem' }}>Budget Limit (₹)</label>
+                  <input type="number" value={budgetLimit} onChange={e => setBudgetLimit(e.target.value)}
+                    style={{ padding: '0.65rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(48,54,61,0.8)', background: 'rgba(0,0,0,0.3)', color: '#f0f6fc', fontSize: '0.95rem', width: '180px' }} />
                 </div>
-
-                {expandedDept === dept.id && (
-                  <div className="border-t border-civic-border/50 p-5 animate-slide-up">
-                    <div className="flex items-center justify-between mb-3">
-                      <h4 className="text-sm font-medium text-slate-300">Recent Assignments</h4>
-                      <span className="text-xs text-slate-500">Jurisdiction: {dept.jurisdiction_categories?.join(', ')}</span>
-                    </div>
-                    {(deptAssignments[dept.id] || []).length === 0 ? (
-                      <p className="text-sm text-slate-500">No assignments yet</p>
-                    ) : (
-                      <div className="space-y-3">
-                        {(deptAssignments[dept.id] || []).map(a => (
-                          <div key={a.id} className="p-3 rounded-lg bg-white/[0.03] flex items-start justify-between gap-4">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm text-white truncate">{a.complaints?.title || 'Complaint'}</p>
-                              <p className="text-xs text-slate-500 mt-0.5">{a.assignment_reason}</p>
-                              <div className="flex items-center gap-3 mt-2 text-xs">
-                                <span className={`px-2 py-0.5 rounded-full ${STATUS_BADGES[a.status] || 'bg-slate-500/20 text-slate-400'}`}>{a.status}</span>
-                                {a.isOverdue && <span className="text-red-400 flex items-center gap-1"><FiAlertTriangle size={12} /> Overdue</span>}
-                                <span className="text-slate-500"><FiClock size={12} className="inline mr-1" />{new Date(a.assigned_at).toLocaleDateString()}</span>
-                                {a.workers_assigned > 0 && <span className="text-slate-400">{a.workers_assigned} workers</span>}
-                              </div>
-                            </div>
-                            {!['completed', 'rejected'].includes(a.status) && (
-                              <div className="flex gap-1 shrink-0">
-                                {a.status === 'pending' && (
-                                  <button onClick={(e) => { e.stopPropagation(); updateAssignment(a.id, 'acknowledged'); }}
-                                    className="px-2 py-1 rounded text-xs bg-blue-500/20 text-blue-400 hover:bg-blue-500/30">Ack</button>
-                                )}
-                                {a.status === 'acknowledged' && (
-                                  <button onClick={(e) => { e.stopPropagation(); updateAssignment(a.id, 'in_progress'); }}
-                                    className="px-2 py-1 rounded text-xs bg-amber-500/20 text-amber-400 hover:bg-amber-500/30">Start</button>
-                                )}
-                                {a.status === 'in_progress' && (
-                                  <button onClick={(e) => { e.stopPropagation(); updateAssignment(a.id, 'completed'); }}
-                                    className="px-2 py-1 rounded text-xs bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30">Complete</button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+                <button onClick={runBudgetOptimization} disabled={loading}
+                  style={{ padding: '0.65rem 1.5rem', borderRadius: '8px', border: 'none', background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: '#fff', fontWeight: 600, cursor: 'pointer', fontSize: '0.9rem' }}>
+                  {loading ? 'Optimizing...' : '🎯 Run Optimization'}
+                </button>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* =================== BUDGET TAB =================== */}
-      {activeTab === 'budget' && (
-        <div className="animate-fade-in">
-          <div className="glass-card p-6 mb-6">
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <FiDollarSign className="text-civic-accent" /> Budget-Aware Prioritization
-            </h3>
-            <p className="text-sm text-slate-400 mb-4">
-              Enter a budget limit to see which complaints can be addressed within the budget.
-              The system uses AI-computed priority scores and estimated costs per severity level.
-            </p>
-            <div className="flex gap-3 items-end flex-wrap">
-              <div className="flex-1 min-w-[200px]">
-                <label className="block text-xs text-slate-400 mb-1">Budget Limit (₹)</label>
-                <input type="number" value={budgetLimit} onChange={e => setBudgetLimit(e.target.value)}
-                  placeholder="e.g., 500000"
-                  className="w-full px-4 py-2.5 rounded-lg bg-civic-dark border border-civic-border text-white placeholder:text-slate-500 focus:border-civic-accent outline-none" />
-              </div>
-              <button onClick={runBudgetPrioritization} disabled={budgetLoading || !budgetLimit}
-                className="px-6 py-2.5 rounded-lg bg-gradient-to-r from-civic-accent to-primary-500 text-white font-medium hover:opacity-90 disabled:opacity-50 transition-all">
-                {budgetLoading ? 'Calculating...' : 'Run Prioritization'}
-              </button>
             </div>
 
-            {/* Cost Legend */}
-            <div className="mt-4 p-3 rounded-lg bg-white/[0.03]">
-              <p className="text-xs text-slate-400 mb-2">Estimated cost per severity:</p>
-              <div className="flex flex-wrap gap-4 text-xs">
-                <span className="text-red-400">Critical: ₹50,000</span>
-                <span className="text-orange-400">High: ₹30,000</span>
-                <span className="text-yellow-400">Medium: ₹15,000</span>
-                <span className="text-green-400">Low: ₹5,000</span>
-              </div>
-            </div>
-          </div>
-
-          {prioritized && (
-            <div className="animate-slide-up">
-              {/* Budget Summary Cards */}
-              <div className="grid md:grid-cols-4 gap-4 mb-6">
-                <div className="glass-card p-4 text-center">
-                  <p className="text-xs text-slate-400 mb-1">Budget Limit</p>
-                  <p className="text-xl font-bold text-white">₹{Number(prioritized.budgetLimit).toLocaleString()}</p>
-                </div>
-                <div className="glass-card p-4 text-center">
-                  <p className="text-xs text-slate-400 mb-1">Budget Used</p>
-                  <p className="text-xl font-bold text-civic-accent">₹{Number(prioritized.budgetUsed).toLocaleString()}</p>
-                </div>
-                <div className="glass-card p-4 text-center">
-                  <p className="text-xs text-slate-400 mb-1">Items Included</p>
-                  <p className="text-xl font-bold text-civic-success">{prioritized.itemsIncluded}</p>
-                </div>
-                <div className="glass-card p-4 text-center">
-                  <p className="text-xs text-slate-400 mb-1">Items Excluded</p>
-                  <p className="text-xl font-bold text-red-400">{prioritized.itemsExcluded}</p>
-                </div>
-              </div>
-
-              {/* Budget Usage Bar */}
-              <div className="glass-card p-4 mb-6">
-                <div className="flex justify-between text-xs text-slate-400 mb-2">
-                  <span>Budget Utilization</span>
-                  <span>{((prioritized.budgetUsed / prioritized.budgetLimit) * 100).toFixed(1)}%</span>
-                </div>
-                <div className="h-3 rounded-full bg-slate-700 overflow-hidden">
-                  <div className="h-full rounded-full bg-gradient-to-r from-civic-accent to-primary-500"
-                    style={{ width: `${Math.min((prioritized.budgetUsed / prioritized.budgetLimit) * 100, 100)}%` }} />
-                </div>
-              </div>
-
-              {/* Prioritized List */}
-              <h3 className="text-sm font-medium text-slate-300 mb-3">Priority-Ranked Complaints (within budget)</h3>
-              <div className="space-y-2">
-                {(prioritized.prioritized || []).map((c, i) => (
-                  <div key={c.id} className="glass-card p-4 flex items-center gap-4">
-                    <div className="w-8 h-8 rounded-lg bg-civic-accent/10 flex items-center justify-center text-civic-accent font-bold text-sm shrink-0">
-                      #{i + 1}
+            {budgetResult && (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                  {[
+                    { label: 'Budget', value: `₹${(budgetResult.budgetLimit || 0).toLocaleString()}`, color: '#f59e0b' },
+                    { label: 'Used', value: `₹${(budgetResult.budgetUsed || 0).toLocaleString()}`, color: '#06b6d4' },
+                    { label: 'Utilization', value: `${budgetResult.utilization || 0}%`, color: '#2ea043' },
+                    { label: 'Funded', value: budgetResult.itemsIncluded || 0, color: '#a855f7' },
+                    { label: 'Excluded', value: budgetResult.itemsExcluded || 0, color: '#f85149' },
+                  ].map((stat, i) => (
+                    <div key={i} style={{ ...cardStyle, borderLeft: `3px solid ${stat.color}` }}>
+                      <p style={{ color: '#8b949e', fontSize: '0.7rem', margin: '0 0 0.2rem' }}>{stat.label}</p>
+                      <p style={{ color: stat.color, fontSize: '1.4rem', fontWeight: 700, margin: 0 }}>{stat.value}</p>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-white truncate">{c.title}</p>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-slate-400">
-                        <span className={`px-2 py-0.5 rounded-full ${SEVERITY_BADGES[c.severity]}`}>{c.severity}</span>
-                        <span>Score: {(c.priority_score * 100).toFixed(0)}%</span>
-                        {c.departments?.name && <span className="text-civic-accent">{c.departments.name}</span>}
-                      </div>
+                  ))}
+                </div>
+
+                <h3 style={{ color: '#f0f6fc', fontSize: '1rem', marginBottom: '0.75rem' }}>✅ Funded Complaints ({budgetResult.itemsIncluded})</h3>
+                {(budgetResult.prioritized || []).map(c => (
+                  <div key={c.id} style={{ ...cardStyle, marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: `3px solid ${SEV_COLORS[c.severity] || '#8b949e'}` }}>
+                    <div>
+                      <p style={{ color: '#f0f6fc', fontSize: '0.85rem', margin: '0 0 0.2rem', fontWeight: 500 }}>#{c.rank} {c.title}</p>
+                      <span style={{ fontSize: '0.7rem', color: SEV_COLORS[c.severity] || '#8b949e' }}>{c.severity}</span>
+                      <span style={{ fontSize: '0.7rem', color: '#8b949e', marginLeft: '0.5rem' }}>{c.category?.replace(/_/g, ' ')}</span>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-semibold text-white">₹{{ critical: '50,000', high: '30,000', medium: '15,000', low: '5,000' }[c.severity] || '10,000'}</p>
-                      <p className="text-xs text-slate-500">est. cost</p>
+                    <div style={{ textAlign: 'right' }}>
+                      <p style={{ color: '#f59e0b', fontSize: '0.9rem', fontWeight: 600, margin: 0 }}>₹{(c.cost || 0).toLocaleString()}</p>
                     </div>
                   </div>
                 ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* =================== AI & ML TAB =================== */}
-      {activeTab === 'ai' && (
-        <div className="animate-fade-in">
-          {/* AI Pipeline Overview */}
-          <div className="glass-card p-6 mb-6">
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <FiCpu className="text-civic-accent" /> AI/ML Pipeline Status
-            </h3>
-            <div className="grid md:grid-cols-4 gap-4">
-              {[
-                { name: 'YOLOv8 Hazard Detection', desc: 'Image hazards (potholes, waterlogging, debris)', icon: <FiTarget />, status: 'Active' },
-                { name: 'BERT Text Classifier', desc: 'Category & severity from complaint text', icon: <FiLayers />, status: 'Active' },
-                { name: 'CLIP Embeddings', desc: 'Duplicate detection via cosine similarity', icon: <FiShield />, status: 'Active' },
-                { name: 'DBSCAN Clustering', desc: 'Geospatial hotspot clustering', icon: <FiMapPin />, status: 'Active' },
-              ].map((model, i) => (
-                <div key={i} className="p-4 rounded-xl bg-white/[0.03] border border-civic-border/30">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-civic-accent">{model.icon}</span>
-                    <h4 className="text-sm font-medium text-white">{model.name}</h4>
-                  </div>
-                  <p className="text-xs text-slate-400 mb-2">{model.desc}</p>
-                  <span className="px-2 py-0.5 rounded-full text-xs bg-emerald-500/20 text-emerald-400">{model.status}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="grid lg:grid-cols-2 gap-6 mb-6">
-            {/* Clustering / Hotspots */}
-            <div className="glass-card p-6">
-              <h3 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
-                <FiMapPin className="text-civic-accent" /> DBSCAN Clusters & Hotspots
-              </h3>
-              {heatmapData.clusters.length === 0 ? (
-                <p className="text-sm text-slate-500">No clusters computed yet. Submit complaints to generate clusters.</p>
-              ) : (
-                <div className="space-y-3">
-                  {heatmapData.clusters.map((c, i) => (
-                    <div key={i} className="p-3 rounded-lg bg-white/[0.03] flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
-                        <FiAlertTriangle className="w-5 h-5 text-red-400" />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium text-white capitalize">{c.dominant_category?.replace('_', ' ') || 'Mixed'}</p>
-                          <span className="text-xs text-slate-400">{c.complaint_count} issues</span>
-                        </div>
-                        <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
-                          <span>Risk: <span className={`font-semibold ${c.risk_score > 0.7 ? 'text-red-400' : c.risk_score > 0.4 ? 'text-amber-400' : 'text-green-400'}`}>{(c.risk_score * 100).toFixed(0)}%</span></span>
-                          <span>📍 {c.centroid_lat?.toFixed(4)}, {c.centroid_lng?.toFixed(4)}</span>
-                        </div>
-                        <div className="mt-2 h-1.5 rounded-full bg-slate-700 overflow-hidden">
-                          <div className="h-full rounded-full bg-gradient-to-r from-amber-500 to-red-500" style={{ width: `${c.risk_score * 100}%` }} />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Risk Areas */}
-            <div className="glass-card p-6">
-              <h3 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
-                <FiAlertTriangle className="text-civic-warning" /> Risk Area Analysis
-              </h3>
-              {riskAreas.length === 0 ? (
-                <div>
-                  <p className="text-sm text-slate-500 mb-3">Risk area data computed from complaint density and severity patterns.</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="p-3 rounded-lg bg-white/[0.03] text-center">
-                      <p className="text-2xl font-bold text-civic-accent">{heatmapData.points.length}</p>
-                      <p className="text-xs text-slate-400">Active Complaints</p>
-                    </div>
-                    <div className="p-3 rounded-lg bg-white/[0.03] text-center">
-                      <p className="text-2xl font-bold text-red-400">{heatmapData.clusters.length}</p>
-                      <p className="text-xs text-slate-400">Hotspot Clusters</p>
-                    </div>
-                    <div className="p-3 rounded-lg bg-white/[0.03] text-center">
-                      <p className="text-2xl font-bold text-amber-400">{heatmapData.points.filter(p => p.severity === 'critical' || p.severity === 'high').length}</p>
-                      <p className="text-xs text-slate-400">High Priority</p>
-                    </div>
-                    <div className="p-3 rounded-lg bg-white/[0.03] text-center">
-                      <p className="text-2xl font-bold text-emerald-400">{heatmapData.points.filter(p => p.severity === 'low').length}</p>
-                      <p className="text-xs text-slate-400">Low Priority</p>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {riskAreas.map((area, i) => (
-                    <div key={i} className="p-3 rounded-lg bg-white/[0.03]">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm text-white">{area.area || area.category || `Zone ${i + 1}`}</p>
-                        <span className={`text-xs font-medium ${area.riskLevel === 'high' ? 'text-red-400' : area.riskLevel === 'medium' ? 'text-amber-400' : 'text-green-400'}`}>
-                          {area.riskLevel || 'medium'} risk
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-400 mt-1">{area.complaintCount || area.count || 0} complaints • {area.dominantIssue || area.dominant_category || 'mixed'}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Duplicate Detection Insights */}
-          <div className="glass-card p-6 mb-6">
-            <h3 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
-              <FiShield className="text-purple-400" /> Duplicate Detection (CLIP Embeddings)
-            </h3>
-            <p className="text-sm text-slate-400 mb-4">
-              CLIP generates 512-dim embeddings for images and text. Complaints with cosine similarity &gt; 0.85 are flagged as potential duplicates.
-            </p>
-            {duplicateInsights ? (
-              <div className="grid md:grid-cols-3 gap-4">
-                <div className="p-4 rounded-lg bg-white/[0.03] text-center">
-                  <p className="text-2xl font-bold text-purple-400">{duplicateInsights.totalDuplicates || duplicateInsights.total_flagged || 0}</p>
-                  <p className="text-xs text-slate-400">Duplicates Flagged</p>
-                </div>
-                <div className="p-4 rounded-lg bg-white/[0.03] text-center">
-                  <p className="text-2xl font-bold text-civic-accent">{duplicateInsights.totalEmbeddings || duplicateInsights.total_embeddings || 0}</p>
-                  <p className="text-xs text-slate-400">Total Embeddings</p>
-                </div>
-                <div className="p-4 rounded-lg bg-white/[0.03] text-center">
-                  <p className="text-2xl font-bold text-emerald-400">{duplicateInsights.uniqueComplaints || duplicateInsights.unique || 0}</p>
-                  <p className="text-xs text-slate-400">Unique Complaints</p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-slate-500">No duplicate data available yet.</p>
+              </>
             )}
           </div>
+        )}
 
-          {/* Severity Scoring Formula */}
-          <div className="glass-card p-6">
-            <h3 className="text-base font-semibold text-white mb-4 flex items-center gap-2">
-              <FiZap className="text-amber-400" /> Severity Scoring Formula
-            </h3>
-            <div className="p-4 rounded-lg bg-white/[0.03] font-mono text-sm text-slate-300">
-              <p>priority_score = (</p>
-              <p className="pl-4 text-red-400">0.30 × hazard_severity <span className="text-slate-500">// YOLOv8 confidence</span></p>
-              <p className="pl-4 text-amber-400">0.25 × text_severity <span className="text-slate-500">// BERT classification</span></p>
-              <p className="pl-4 text-blue-400">0.20 × complaint_density <span className="text-slate-500">// DBSCAN cluster size</span></p>
-              <p className="pl-4 text-green-400">0.15 × recency_score <span className="text-slate-500">// newer = higher priority</span></p>
-              <p className="pl-4 text-purple-400">0.10 × population_impact <span className="text-slate-500">// area population data</span></p>
-              <p>)</p>
-            </div>
-            <div className="mt-4 grid md:grid-cols-2 gap-3">
-              <div className="p-3 rounded-lg bg-white/[0.03]">
-                <h5 className="text-xs font-medium text-slate-300 mb-1">Department Routing</h5>
-                <p className="text-xs text-slate-400">AI auto-assigns complaints to the correct city department using YOLOv8 labels + BERT categories mapped to department jurisdiction.</p>
-              </div>
-              <div className="p-3 rounded-lg bg-white/[0.03]">
-                <h5 className="text-xs font-medium text-slate-300 mb-1">Deadline Calculation</h5>
-                <p className="text-xs text-slate-400">Critical: 24h • High: 48h • Medium: 5 days • Low: 10 days — auto-computed based on severity.</p>
-              </div>
-            </div>
+        {/* ===== USERS TAB ===== */}
+        {activeTab === 'users' && (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  {['Name', 'Email', 'Phone', 'Role', 'Joined', 'Actions'].map(h => (
+                    <th key={h} style={{ textAlign: 'left', padding: '0.75rem', color: '#8b949e', fontSize: '0.8rem', borderBottom: '1px solid rgba(48,54,61,0.5)' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {users.map(u => (
+                  <tr key={u.id} style={{ borderBottom: '1px solid rgba(48,54,61,0.3)' }}>
+                    <td style={{ padding: '0.75rem', color: '#f0f6fc', fontSize: '0.85rem' }}>{u.full_name || '—'}</td>
+                    <td style={{ padding: '0.75rem', color: '#8b949e', fontSize: '0.85rem' }}>{u.email?.includes('@civicpulse.local') ? '(phone user)' : u.email}</td>
+                    <td style={{ padding: '0.75rem', color: '#8b949e', fontSize: '0.85rem' }}>{u.phone || '—'}</td>
+                    <td style={{ padding: '0.75rem' }}>
+                      <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', borderRadius: '4px',
+                        background: u.role === 'admin' ? 'rgba(245,158,11,0.15)' : u.role === 'department_head' ? 'rgba(168,85,247,0.15)' : 'rgba(6,182,212,0.15)',
+                        color: u.role === 'admin' ? '#f59e0b' : u.role === 'department_head' ? '#a855f7' : '#06b6d4' }}>{u.role?.replace(/_/g, ' ')}</span>
+                    </td>
+                    <td style={{ padding: '0.75rem', color: '#6e7681', fontSize: '0.8rem' }}>{u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
+                    <td style={{ padding: '0.75rem' }}>
+                      {/* Only admins can change roles, and can't change their own */}
+                      {profile?.role === 'admin' && u.id !== profile?.id && (
+                        <select value={u.role} onChange={e => handleRoleChange(u.id, e.target.value)}
+                          style={{ padding: '0.35rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(48,54,61,0.8)', background: 'rgba(0,0,0,0.3)', color: '#c9d1d9', fontSize: '0.75rem' }}>
+                          <option value="citizen">Citizen</option>
+                          <option value="admin">Admin</option>
+                          <option value="department_head">Dept Head</option>
+                        </select>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
-      )}
-
-      {/* =================== USERS TAB =================== */}
-      {activeTab === 'users' && (
-        <div className="animate-fade-in">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-semibold text-white">User Management</h3>
-            <button onClick={loadUsers} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-civic-accent/10 text-civic-accent text-sm hover:bg-civic-accent/20 transition-all">
-              <FiRefreshCw size={14} /> Refresh
-            </button>
-          </div>
-
-          {usersLoading ? (
-            <div className="flex items-center justify-center py-20"><FiLoader className="w-6 h-6 text-civic-accent animate-spin" /></div>
-          ) : (
-            <div className="glass-card overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-civic-border/50">
-                      <th className="text-left px-5 py-3 text-xs font-medium text-slate-400 uppercase">User</th>
-                      <th className="text-left px-5 py-3 text-xs font-medium text-slate-400 uppercase">Email</th>
-                      <th className="text-left px-5 py-3 text-xs font-medium text-slate-400 uppercase">Role</th>
-                      <th className="text-left px-5 py-3 text-xs font-medium text-slate-400 uppercase">Joined</th>
-                      <th className="text-left px-5 py-3 text-xs font-medium text-slate-400 uppercase">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {users.map(u => (
-                      <tr key={u.id} className="border-b border-civic-border/30 hover:bg-white/[0.02]">
-                        <td className="px-5 py-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-civic-accent/10 flex items-center justify-center text-civic-accent font-semibold text-sm">
-                              {u.full_name?.charAt(0)?.toUpperCase() || '?'}
-                            </div>
-                            <span className="text-sm text-white">{u.full_name}</span>
-                          </div>
-                        </td>
-                        <td className="px-5 py-3 text-sm text-slate-400">{u.email}</td>
-                        <td className="px-5 py-3">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                            u.role === 'admin' ? 'bg-red-500/20 text-red-400' :
-                            u.role === 'department_head' ? 'bg-purple-500/20 text-purple-400' :
-                            'bg-blue-500/20 text-blue-400'
-                          }`}>
-                            {u.role}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3 text-sm text-slate-500">{new Date(u.created_at).toLocaleDateString()}</td>
-                        <td className="px-5 py-3">
-                          <select value={u.role} onChange={e => updateUserRole(u.id, e.target.value)}
-                            className="px-2 py-1 rounded-lg bg-civic-dark border border-civic-border text-white text-xs outline-none focus:border-civic-accent">
-                            <option value="citizen">Citizen</option>
-                            <option value="admin">Admin</option>
-                            <option value="department_head">Dept Head</option>
-                          </select>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {users.length === 0 && (
-                <div className="p-8 text-center text-slate-500 text-sm">No users found.</div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

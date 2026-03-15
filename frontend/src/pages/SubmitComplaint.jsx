@@ -1,175 +1,340 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import { complaintsAPI } from '../services/api';
-import { FiUpload, FiMapPin, FiSend, FiX, FiCheckCircle } from 'react-icons/fi';
-
-const CATEGORIES = [
-  { value: 'pothole', label: 'Pothole' },
-  { value: 'damaged_road', label: 'Damaged Road' },
-  { value: 'waterlogging', label: 'Waterlogging' },
-  { value: 'littering', label: 'Littering / Garbage' },
-  { value: 'fallen_trees', label: 'Fallen Trees' },
-  { value: 'damaged_electric_wires', label: 'Damaged Electric Wires' },
-  { value: 'broken_road_sign', label: 'Broken Road Sign' },
-  { value: 'illegal_parking', label: 'Illegal Parking' },
-  { value: 'vandalism', label: 'Vandalism / Graffiti' },
-  { value: 'damaged_concrete', label: 'Damaged Concrete' },
-  { value: 'water_supply', label: 'Water Supply Issue' },
-  { value: 'drainage', label: 'Drainage / Sewage' },
-  { value: 'other', label: 'Other' },
-];
+import { FiCamera, FiFileText, FiVideo, FiMapPin, FiUpload, FiAlertTriangle, FiCheckCircle, FiSearch } from 'react-icons/fi';
 
 export default function SubmitComplaint() {
-  const [form, setForm] = useState({ title: '', description: '', category: '', latitude: '', longitude: '', address: '' });
-  const [images, setImages] = useState([]);
-  const [previews, setPreviews] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState('');
-  const [locating, setLocating] = useState(false);
+  const { user } = useAuth();
   const navigate = useNavigate();
 
-  const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  const [mode, setMode] = useState('image_text'); // 'image_only', 'image_text'
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [address, setAddress] = useState('');
+  const [latitude, setLatitude] = useState('');
+  const [longitude, setLongitude] = useState('');
+  const [files, setFiles] = useState([]);
+  const [previews, setPreviews] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState(null);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [addressSearch, setAddressSearch] = useState('');
 
-  const handleImages = (e) => {
-    const files = Array.from(e.target.files).slice(0, 3);
-    setImages(files);
-    setPreviews(files.map(f => URL.createObjectURL(f)));
+  useEffect(() => {
+    if (!user) navigate('/login');
+  }, [user, navigate]);
+
+  // Auto-detect location on mount
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setLatitude(pos.coords.latitude.toString());
+          setLongitude(pos.coords.longitude.toString());
+          reverseGeocode(pos.coords.latitude, pos.coords.longitude);
+        },
+        () => console.log('Geolocation not available')
+      );
+    }
+  }, []);
+
+  const reverseGeocode = async (lat, lng) => {
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18`
+      );
+      const data = await response.json();
+      if (data.display_name) {
+        setAddress(data.display_name);
+      }
+    } catch (err) {
+      console.warn('Reverse geocode failed:', err);
+    }
   };
 
-  const removeImage = (idx) => {
-    setImages(images.filter((_, i) => i !== idx));
-    setPreviews(previews.filter((_, i) => i !== idx));
+  const searchAddress = async () => {
+    if (!addressSearch.trim()) return;
+    setLocationLoading(true);
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addressSearch)}&limit=1`
+      );
+      const data = await response.json();
+      if (data && data.length > 0) {
+        setLatitude(data[0].lat);
+        setLongitude(data[0].lon);
+        setAddress(data[0].display_name);
+        setAddressSearch('');
+      } else {
+        setError('Location not found. Try a more specific address.');
+      }
+    } catch (err) {
+      setError('Location search failed. Please try again.');
+    }
+    setLocationLoading(false);
   };
 
-  const captureLocation = () => {
-    if (!navigator.geolocation) return setError('Geolocation not supported');
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      async (pos) => {
-        const lat = pos.coords.latitude.toFixed(6);
-        const lng = pos.coords.longitude.toFixed(6);
-        setForm({ ...form, latitude: lat, longitude: lng });
-        // Reverse geocode
-        try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
-          const data = await res.json();
-          if (data.display_name) setForm(prev => ({ ...prev, latitude: lat, longitude: lng, address: data.display_name }));
-        } catch { /* ignore */ }
-        setLocating(false);
-      },
-      () => { setError('Location permission denied'); setLocating(false); }
-    );
+  const handleFileChange = (e) => {
+    const selectedFiles = Array.from(e.target.files);
+    setFiles(prev => [...prev, ...selectedFiles]);
+
+    selectedFiles.forEach(file => {
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (ev) => setPreviews(prev => [...prev, { type: 'image', url: ev.target.result, name: file.name }]);
+        reader.readAsDataURL(file);
+      } else if (file.type.startsWith('video/')) {
+        setPreviews(prev => [...prev, { type: 'video', name: file.name, size: (file.size / 1024 / 1024).toFixed(1) + ' MB' }]);
+      }
+    });
+  };
+
+  const removeFile = (index) => {
+    setFiles(prev => prev.filter((_, i) => i !== index));
+    setPreviews(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-
-    if (!form.latitude || !form.longitude) return setError('Please capture your location');
-
     setLoading(true);
-    try {
-      const formData = new FormData();
-      Object.entries(form).forEach(([k, v]) => formData.append(k, v));
-      images.forEach(img => formData.append('images', img));
 
-      await complaintsAPI.create(formData);
-      setSuccess(true);
-      setTimeout(() => navigate('/track'), 2000);
+    try {
+      if (!latitude || !longitude) {
+        throw new Error('Please set your location using the search or auto-detect button.');
+      }
+
+      const formData = new FormData();
+      formData.append('mode', mode);
+      formData.append('latitude', latitude);
+      formData.append('longitude', longitude);
+      formData.append('address', address);
+
+      if (mode === 'image_text') {
+        if (!title) throw new Error('Title is required for Image + Text mode.');
+        formData.append('title', title);
+        formData.append('description', description);
+      }
+
+      files.forEach(file => formData.append('files', file));
+
+      if (files.length === 0 && mode === 'image_only') {
+        throw new Error('Please upload at least one image for Image Only mode.');
+      }
+
+      const response = await complaintsAPI.create(formData);
+      setResult(response.data);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to submit complaint');
+      setError(err.response?.data?.error || err.message || 'Submission failed');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  if (success) {
+  if (result) {
+    const c = result.complaint;
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="glass-card p-12 text-center animate-fade-in">
-          <FiCheckCircle className="w-16 h-16 text-civic-success mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-white mb-2">Complaint Submitted!</h2>
-          <p className="text-slate-400">AI is analyzing your report. Redirecting to tracking...</p>
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', background: 'linear-gradient(135deg, #0a0a1a 0%, #0d1117 50%, #0a1a2a 100%)' }}>
+        <div style={{ background: 'rgba(22, 27, 34, 0.9)', borderRadius: '16px', padding: '2.5rem', maxWidth: '520px', width: '100%', border: '1px solid rgba(46, 160, 67, 0.3)', textAlign: 'center' }}>
+          <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(46, 160, 67, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem', fontSize: '1.8rem' }}>
+            <FiCheckCircle color="#2ea043" />
+          </div>
+          <h2 style={{ color: '#f0f6fc', margin: '0 0 0.5rem' }}>Complaint Submitted!</h2>
+          <p style={{ color: '#8b949e', marginBottom: '1.5rem' }}>{result.message}</p>
+
+          {result.duplicate && (
+            <div style={{ padding: '1rem', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '8px', marginBottom: '1rem', textAlign: 'left' }}>
+              <p style={{ color: '#f59e0b', fontSize: '0.85rem', margin: 0 }}>
+                ⚠️ {result.duplicate.message}
+              </p>
+            </div>
+          )}
+
+          {result.aiGenerated && (
+            <div style={{ padding: '1rem', background: 'rgba(6, 182, 212, 0.1)', border: '1px solid rgba(6, 182, 212, 0.3)', borderRadius: '8px', marginBottom: '1rem', textAlign: 'left' }}>
+              <p style={{ color: '#06b6d4', fontSize: '0.8rem', margin: '0 0 0.5rem', fontWeight: 600 }}>🤖 AI Generated:</p>
+              <p style={{ color: '#c9d1d9', fontSize: '0.85rem', margin: 0 }}>
+                <strong>Title:</strong> {result.aiGenerated.title}<br />
+                <strong>Description:</strong> {result.aiGenerated.description}
+              </p>
+            </div>
+          )}
+
+          <div style={{ textAlign: 'left', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', marginBottom: '1.5rem' }}>
+            <p style={{ color: '#c9d1d9', fontSize: '0.85rem', margin: '0.25rem 0' }}><strong>Category:</strong> {c?.category?.replace(/_/g, ' ')}</p>
+            <p style={{ color: '#c9d1d9', fontSize: '0.85rem', margin: '0.25rem 0' }}><strong>Severity:</strong> <span style={{ color: c?.severity === 'critical' ? '#f85149' : c?.severity === 'high' ? '#f59e0b' : '#06b6d4' }}>{c?.severity}</span></p>
+            <p style={{ color: '#c9d1d9', fontSize: '0.85rem', margin: '0.25rem 0' }}><strong>Department:</strong> {c?.departments?.name || 'Pending assignment'}</p>
+            <p style={{ color: '#c9d1d9', fontSize: '0.85rem', margin: '0.25rem 0' }}><strong>Status:</strong> {c?.status?.replace(/_/g, ' ')}</p>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button onClick={() => { setResult(null); setFiles([]); setPreviews([]); setTitle(''); setDescription(''); }}
+              style={{ flex: 1, padding: '0.75rem', borderRadius: '10px', border: '1px solid rgba(48, 54, 61, 0.8)', background: 'transparent', color: '#c9d1d9', cursor: 'pointer', fontWeight: 500 }}>
+              Report Another
+            </button>
+            <button onClick={() => navigate('/my-dashboard')}
+              style={{ flex: 1, padding: '0.75rem', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, #06b6d4, #0891b2)', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>
+              My Dashboard
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
-      <div className="glass-card p-8 animate-fade-in">
-        <h1 className="text-2xl font-bold text-white mb-1">Report a Civic Issue</h1>
-        <p className="text-slate-400 text-sm mb-8">Upload photo, describe the problem, and our AI will analyze & route it to the right department.</p>
+    <div style={{ minHeight: '100vh', padding: '6rem 1rem 2rem', background: 'linear-gradient(135deg, #0a0a1a 0%, #0d1117 50%, #0a1a2a 100%)' }}>
+      <div style={{ maxWidth: '640px', margin: '0 auto' }}>
+        <h1 style={{ color: '#f0f6fc', fontSize: '1.75rem', marginBottom: '0.5rem' }}>Report a Civic Issue</h1>
+        <p style={{ color: '#8b949e', marginBottom: '2rem' }}>Upload images/videos and AI will analyze automatically</p>
 
-        {error && <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">{error}</div>}
+        {/* Mode Toggle */}
+        <div style={{ display: 'flex', background: 'rgba(22, 27, 34, 0.9)', borderRadius: '12px', padding: '4px', marginBottom: '1.5rem', border: '1px solid rgba(48, 54, 61, 0.5)' }}>
+          <button type="button" onClick={() => setMode('image_only')}
+            style={{ flex: 1, padding: '0.75rem', borderRadius: '10px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 600, fontSize: '0.85rem',
+              background: mode === 'image_only' ? 'rgba(168, 85, 247, 0.2)' : 'transparent',
+              color: mode === 'image_only' ? '#a855f7' : '#8b949e' }}>
+            <FiCamera /> Image Only
+          </button>
+          <button type="button" onClick={() => setMode('image_text')}
+            style={{ flex: 1, padding: '0.75rem', borderRadius: '10px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 600, fontSize: '0.85rem',
+              background: mode === 'image_text' ? 'rgba(6, 182, 212, 0.2)' : 'transparent',
+              color: mode === 'image_text' ? '#06b6d4' : '#8b949e' }}>
+            <FiFileText /> Image + Text
+          </button>
+        </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Image Upload */}
-          <div>
-            <label className="block text-sm text-slate-300 mb-2">Upload Photos (max 3)</label>
-            <div className="flex flex-wrap gap-3">
-              {previews.map((src, i) => (
-                <div key={i} className="relative w-24 h-24 rounded-xl overflow-hidden border border-civic-border">
-                  <img src={src} alt="" className="w-full h-full object-cover" />
-                  <button type="button" onClick={() => removeImage(i)} className="absolute top-1 right-1 p-1 rounded-full bg-black/60 text-white">
-                    <FiX size={12} />
-                  </button>
-                </div>
-              ))}
-              {previews.length < 3 && (
-                <label className="w-24 h-24 rounded-xl border-2 border-dashed border-civic-border hover:border-civic-accent flex flex-col items-center justify-center cursor-pointer transition-colors">
-                  <FiUpload className="w-5 h-5 text-slate-500" />
-                  <span className="text-xs text-slate-500 mt-1">Add</span>
-                  <input type="file" accept="image/*" onChange={handleImages} multiple className="hidden" />
-                </label>
-              )}
-            </div>
+        {mode === 'image_only' && (
+          <div style={{ padding: '0.75rem 1rem', background: 'rgba(168, 85, 247, 0.1)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: '8px', marginBottom: '1.5rem' }}>
+            <p style={{ color: '#a855f7', fontSize: '0.8rem', margin: 0 }}>📷 <strong>Image Only Mode:</strong> Just upload photos/videos — AI will auto-detect the issue, generate a title, and assign it to the right department.</p>
           </div>
+        )}
 
-          {/* Title & Description */}
-          <div className="grid md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-slate-300 mb-1.5">Title</label>
-              <input type="text" name="title" value={form.title} onChange={handleChange} required
-                className="w-full px-4 py-2.5 rounded-lg bg-civic-dark border border-civic-border text-white placeholder:text-slate-500 focus:border-civic-accent outline-none"
-                placeholder="Brief summary of the issue" />
-            </div>
-            <div>
-              <label className="block text-sm text-slate-300 mb-1.5">Category</label>
-              <select name="category" value={form.category} onChange={handleChange}
-                className="w-full px-4 py-2.5 rounded-lg bg-civic-dark border border-civic-border text-white focus:border-civic-accent outline-none">
-                <option value="">Auto-detect by AI</option>
-                {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
-            </div>
+        {error && (
+          <div style={{ padding: '0.75rem 1rem', background: 'rgba(248, 81, 73, 0.1)', border: '1px solid rgba(248, 81, 73, 0.3)', borderRadius: '8px', color: '#f85149', fontSize: '0.85rem', marginBottom: '1rem' }}>
+            <FiAlertTriangle style={{ verticalAlign: 'middle', marginRight: '0.5rem' }} />{error}
           </div>
+        )}
 
-          <div>
-            <label className="block text-sm text-slate-300 mb-1.5">Description</label>
-            <textarea name="description" value={form.description} onChange={handleChange} required rows={4}
-              className="w-full px-4 py-2.5 rounded-lg bg-civic-dark border border-civic-border text-white placeholder:text-slate-500 focus:border-civic-accent outline-none resize-none"
-              placeholder="Describe the problem in detail..." />
-          </div>
+        <form onSubmit={handleSubmit}>
+          {/* File Upload */}
+          <div style={{ marginBottom: '1.5rem' }}>
+            <label style={{ display: 'block', color: '#c9d1d9', fontSize: '0.85rem', marginBottom: '0.5rem', fontWeight: 500 }}>
+              📎 Upload Images / Videos {mode === 'image_only' ? '(required)' : '(optional)'}
+            </label>
+            <label style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              padding: '2rem', borderRadius: '12px', border: '2px dashed rgba(48, 54, 61, 0.8)',
+              background: 'rgba(22, 27, 34, 0.5)', cursor: 'pointer', transition: 'border-color 0.3s',
+              minHeight: '120px'
+            }}>
+              <FiUpload size={28} color="#8b949e" />
+              <p style={{ color: '#8b949e', fontSize: '0.85rem', margin: '0.5rem 0 0' }}>
+                Click to upload or drag & drop
+              </p>
+              <p style={{ color: '#6e7681', fontSize: '0.75rem', margin: '0.25rem 0 0' }}>
+                Images (JPG, PNG, WebP) • Videos (MP4, WebM, MOV) • Max 25MB
+              </p>
+              <input type="file" multiple accept="image/*,video/*" onChange={handleFileChange} style={{ display: 'none' }} />
+            </label>
 
-          {/* Location */}
-          <div>
-            <label className="block text-sm text-slate-300 mb-2">Location</label>
-            <button type="button" onClick={captureLocation} disabled={locating}
-              className="flex items-center px-4 py-2.5 rounded-lg border border-civic-border text-slate-300 hover:bg-white/5 transition-all disabled:opacity-50">
-              <FiMapPin className="mr-2" />
-              {locating ? 'Locating...' : form.latitude ? '📍 Location Captured' : 'Capture My Location'}
-            </button>
-            {form.address && <p className="text-xs text-slate-400 mt-2 truncate">📍 {form.address}</p>}
-            {form.latitude && (
-              <p className="text-xs text-slate-500 mt-1">Lat: {form.latitude}, Lng: {form.longitude}</p>
+            {previews.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginTop: '1rem' }}>
+                {previews.map((preview, i) => (
+                  <div key={i} style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(48, 54, 61, 0.5)' }}>
+                    {preview.type === 'image' ? (
+                      <img src={preview.url} alt="" style={{ width: '100px', height: '100px', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ width: '100px', height: '100px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)' }}>
+                        <FiVideo color="#a855f7" size={24} />
+                        <span style={{ color: '#8b949e', fontSize: '0.7rem', marginTop: '0.25rem' }}>{preview.size}</span>
+                      </div>
+                    )}
+                    <button type="button" onClick={() => removeFile(i)}
+                      style={{ position: 'absolute', top: '2px', right: '2px', background: 'rgba(248, 81, 73, 0.9)', border: 'none', borderRadius: '50%', width: '20px', height: '20px', color: '#fff', cursor: 'pointer', fontSize: '0.7rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 
-          {/* Submit */}
+          {/* Location */}
+          <div style={{ marginBottom: '1.5rem' }}>
+            <label style={{ display: 'block', color: '#c9d1d9', fontSize: '0.85rem', marginBottom: '0.5rem', fontWeight: 500 }}>
+              📍 Location
+            </label>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: '1px solid rgba(48, 54, 61, 0.8)', padding: '0 0.75rem' }}>
+                <FiSearch color="#8b949e" size={16} />
+                <input type="text" placeholder="Search address or place name..."
+                  value={addressSearch} onChange={(e) => setAddressSearch(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), searchAddress())}
+                  style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f0f6fc', padding: '0.75rem 0.5rem', fontSize: '0.9rem' }} />
+              </div>
+              <button type="button" onClick={searchAddress} disabled={locationLoading}
+                style={{ padding: '0.75rem 1rem', borderRadius: '10px', border: 'none', background: 'rgba(6, 182, 212, 0.2)', color: '#06b6d4', cursor: 'pointer', fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                {locationLoading ? '...' : 'Search'}
+              </button>
+              <button type="button" onClick={() => {
+                if (navigator.geolocation) {
+                  setLocationLoading(true);
+                  navigator.geolocation.getCurrentPosition(
+                    (pos) => { setLatitude(pos.coords.latitude.toString()); setLongitude(pos.coords.longitude.toString()); reverseGeocode(pos.coords.latitude, pos.coords.longitude); setLocationLoading(false); },
+                    () => { setError('Could not get your location'); setLocationLoading(false); }
+                  );
+                }
+              }}
+                style={{ padding: '0.75rem', borderRadius: '10px', border: 'none', background: 'rgba(46, 160, 67, 0.2)', color: '#2ea043', cursor: 'pointer', fontSize: '1rem' }}>
+                <FiMapPin />
+              </button>
+            </div>
+
+            {address && (
+              <p style={{ color: '#8b949e', fontSize: '0.8rem', margin: '0.5rem 0 0', padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px' }}>
+                📍 {address}
+              </p>
+            )}
+            {latitude && longitude && (
+              <p style={{ color: '#6e7681', fontSize: '0.75rem', margin: '0.25rem 0 0' }}>
+                Coordinates: {parseFloat(latitude).toFixed(6)}, {parseFloat(longitude).toFixed(6)}
+              </p>
+            )}
+          </div>
+
+          {/* Title + Description (only in image_text mode) */}
+          {mode === 'image_text' && (
+            <>
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', color: '#c9d1d9', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 500 }}>Title</label>
+                <input type="text" placeholder="Brief title of the issue..." value={title} onChange={(e) => setTitle(e.target.value)} required
+                  style={{ width: '100%', padding: '0.85rem 1rem', borderRadius: '10px', border: '1px solid rgba(48, 54, 61, 0.8)', background: 'rgba(0,0,0,0.3)', color: '#f0f6fc', fontSize: '0.95rem', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', color: '#c9d1d9', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 500 }}>Description</label>
+                <textarea placeholder="Describe the issue in detail..." value={description} onChange={(e) => setDescription(e.target.value)} rows={4}
+                  style={{ width: '100%', padding: '0.85rem 1rem', borderRadius: '10px', border: '1px solid rgba(48, 54, 61, 0.8)', background: 'rgba(0,0,0,0.3)', color: '#f0f6fc', fontSize: '0.95rem', outline: 'none', resize: 'vertical', fontFamily: 'inherit', boxSizing: 'border-box' }} />
+              </div>
+            </>
+          )}
+
           <button type="submit" disabled={loading}
-            className="w-full flex items-center justify-center py-3.5 rounded-xl bg-gradient-to-r from-civic-accent to-primary-500 text-white font-semibold text-lg hover:opacity-90 transition-opacity disabled:opacity-50">
-            <FiSend className="mr-2" />
-            {loading ? 'Submitting & Analyzing...' : 'Submit Report'}
+            style={{
+              width: '100%', padding: '1rem', borderRadius: '12px', border: 'none',
+              background: mode === 'image_only'
+                ? 'linear-gradient(135deg, #a855f7, #7c3aed)'
+                : 'linear-gradient(135deg, #06b6d4, #0891b2)',
+              color: '#fff', fontSize: '1rem', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.7 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem'
+            }}>
+            {loading ? (
+              <>⏳ Analyzing & Submitting...</>
+            ) : (
+              <>{mode === 'image_only' ? '📷 Submit with AI Analysis' : '📝 Submit Complaint'}</>
+            )}
           </button>
         </form>
       </div>
