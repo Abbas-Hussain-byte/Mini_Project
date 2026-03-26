@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { FiShield, FiMapPin, FiBarChart2, FiZap, FiArrowRight, FiCamera, FiUsers } from 'react-icons/fi';
+import backgroundImg from '../assets/img-1.jpg';
 
 export default function HomePage() {
   const { user } = useAuth();
@@ -18,6 +19,9 @@ export default function HomePage() {
     <div className="min-h-screen">
       {/* Hero Section */}
       <section className="relative bg-animated overflow-hidden">
+        <div className="absolute inset-0">
+          <img src={backgroundImg} alt="Background" className="w-full h-full object-cover opacity-30" />
+        </div>
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-civic-dark"></div>
         <div className="relative max-w-7xl mx-auto px-4 py-24 md:py-36">
           <div className="text-center animate-fade-in">
