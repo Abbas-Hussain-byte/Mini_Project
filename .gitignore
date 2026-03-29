@@ -38,3 +38,10 @@ venv/
 # Environment files anywhere
 .env.*
 !.env.example
+
+# Datasets and Training Outputs
+kaggle_archive/
+ml/data/
+ml/runs/
+.ipynb_checkpoints/
+*.ipynb

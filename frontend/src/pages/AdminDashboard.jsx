@@ -223,17 +223,20 @@ export default function AdminDashboard() {
         {activeTab === 'overview' && !loading && (
           <div>
             {/* Stat Cards */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
               {[
                 { label: 'Total Complaints', value: overview?.total || 0, color: '#06b6d4' },
-                { label: 'Pending Verification', value: statusData.pending_verification || 0, color: '#eab308' },
+                { label: 'Submitted', value: statusData.submitted || 0, color: '#8b949e' },
+                { label: 'Assigned', value: (statusData.assigned || 0) + (statusData.under_review || 0), color: '#06b6d4' },
                 { label: 'In Progress', value: statusData.in_progress || 0, color: '#a855f7' },
+                { label: 'Pending Verify', value: statusData.pending_verification || 0, color: '#eab308' },
                 { label: 'Resolved', value: statusData.resolved || 0, color: '#2ea043' },
+                { label: 'Duplicate', value: (statusData.duplicate || 0) + (statusData.rejected || 0), color: '#6e7681' },
                 { label: 'Critical', value: sevData.critical || 0, color: '#f85149' },
               ].map((stat, i) => (
-                <div key={i} style={{ ...cardStyle, borderLeft: `3px solid ${stat.color}` }}>
-                  <p style={{ color: '#8b949e', fontSize: '0.75rem', margin: '0 0 0.25rem' }}>{stat.label}</p>
-                  <p style={{ color: '#f0f6fc', fontSize: '1.75rem', fontWeight: 700, margin: 0 }}>{stat.value}</p>
+                <div key={i} style={{ ...cardStyle, borderLeft: `3px solid ${stat.color}`, padding: '1rem' }}>
+                  <p style={{ color: '#8b949e', fontSize: '0.7rem', margin: '0 0 0.25rem' }}>{stat.label}</p>
+                  <p style={{ color: '#f0f6fc', fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>{stat.value}</p>
                 </div>
               ))}
             </div>
@@ -349,12 +352,12 @@ export default function AdminDashboard() {
                       <select onChange={(e) => { if (e.target.value) handleStatusUpdate(c.id, e.target.value); e.target.value = ''; }}
                         defaultValue=""
                         style={{ padding: '0.4rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(48,54,61,0.8)', background: 'rgba(0,0,0,0.3)', color: '#c9d1d9', fontSize: '0.75rem', cursor: 'pointer' }}>
-                        <option value="" disabled>Change status...</option>
-                        <option value="under_review">Under Review</option>
-                        <option value="assigned">Assigned</option>
-                        <option value="in_progress">In Progress</option>
-                        <option value="pending_verification">Pending Verification</option>
-                        <option value="resolved">Resolve (Admin Only)</option>
+                        <option value="" disabled style={{ background: '#1a1a2e', color: '#e0e0e0' }}>Change status...</option>
+                        <option value="under_review" style={{ background: '#1a1a2e', color: '#e0e0e0' }}>Under Review</option>
+                        <option value="assigned" style={{ background: '#1a1a2e', color: '#e0e0e0' }}>Assigned</option>
+                        <option value="in_progress" style={{ background: '#1a1a2e', color: '#e0e0e0' }}>In Progress</option>
+                        <option value="pending_verification" style={{ background: '#1a1a2e', color: '#e0e0e0' }}>Pending Verification</option>
+                        <option value="resolved" style={{ background: '#1a1a2e', color: '#e0e0e0' }}>Resolve (Admin Only)</option>
                       </select>
                     )}
 
@@ -406,6 +409,16 @@ export default function AdminDashboard() {
         {/* ===== DEPARTMENTS TAB ===== */}
         {activeTab === 'departments' && (
           <div>
+            {/* Loading state */}
+            {loading && (
+              <div style={{ textAlign: 'center', padding: '3rem' }}>
+                <FiRefreshCw style={{ animation: 'spin 1s linear infinite', marginBottom: '0.5rem' }} size={24} color="#06b6d4" />
+                <p style={{ color: '#8b949e', fontSize: '0.9rem' }}>Loading departments...</p>
+              </div>
+            )}
+
+            {!loading && (
+              <>
             {/* Department Performance Chart */}
             {deptPerformance.length > 0 && (
               <div style={{ ...cardStyle, marginBottom: '1.5rem' }}>
@@ -417,7 +430,9 @@ export default function AdminDashboard() {
             )}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
-              {departments.map(dept => (
+              {departments.length === 0 ? (
+                <p style={{ color: '#8b949e', textAlign: 'center', padding: '2rem' }}>No departments found.</p>
+              ) : departments.map(dept => (
                 <div key={dept.id} style={{ ...cardStyle }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                     <div>
@@ -456,6 +471,8 @@ export default function AdminDashboard() {
                 </div>
               ))}
             </div>
+              </>
+            )}
           </div>
         )}
 

@@ -4,6 +4,9 @@ const { YOLO_LABEL_MAP } = require('../utils/constants');
 
 const ML_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
 
+const SEVERITY_RANK = { 'low': 1, 'medium': 2, 'high': 3, 'critical': 4 };
+const RANK_TO_SEVERITY = { 1: 'low', 2: 'medium', 3: 'high', 4: 'critical' };
+
 /**
  * Run full AI analysis pipeline on a complaint
  * Calls ML service for: image analysis, text classification, embeddings
@@ -16,7 +19,8 @@ async function analyzeComplaint({ title, description, imageUrls, videoUrl, latit
     severity: 'medium',
     priorityScore: 0,
     title: title || 'Civic Issue Reported',
-    description: description || ''
+    description: description || '',
+    category: 'other'
   };
 
   try {
@@ -29,13 +33,19 @@ async function analyzeComplaint({ title, description, imageUrls, videoUrl, latit
         }, { timeout: 30000 });
 
         if (completeResponse.data) {
-          result.title = completeResponse.data.title || result.title;
-          result.description = completeResponse.data.description || result.description;
-          result.analysis.imageDetections = completeResponse.data.detections || [];
-          result.detectedLabels = completeResponse.data.labels || [];
-          result.severity = completeResponse.data.severity || 'medium';
-          result.analysis.category = completeResponse.data.category;
-          result.analysis.confidence = completeResponse.data.confidence;
+          const mlData = completeResponse.data;
+          result.title = mlData.title || result.title;
+          result.description = mlData.description || result.description;
+          result.analysis.imageDetections = mlData.detections || [];
+          result.detectedLabels = mlData.labels || [];
+          result.severity = mlData.severity || 'medium';
+          result.analysis.category = mlData.category;
+          result.analysis.confidence = mlData.confidence;
+          result.analysis.textCategory = mlData.text_analysis?.category;
+          result.analysis.textSeverity = mlData.text_analysis?.severity;
+          result.analysis.textConfidence = mlData.text_analysis?.confidence;
+          result.analysis.imageSeverity = mlData.severity;
+          result.category = mlData.category || 'other';
           result.priorityScore = calculatePriority(result.severity, result.analysis);
           return result;
         }
@@ -57,9 +67,16 @@ async function analyzeComplaint({ title, description, imageUrls, videoUrl, latit
 
           const maxConfidence = Math.max(...imageResponse.data.detections.map(d => d.confidence || 0));
           if (maxConfidence > 0.8) result.analysis.imageSeverity = 'critical';
-          else if (maxConfidence > 0.6) result.analysis.imageSeverity = 'high';
-          else if (maxConfidence > 0.4) result.analysis.imageSeverity = 'medium';
+          else if (maxConfidence > 0.5) result.analysis.imageSeverity = 'high';
+          else if (maxConfidence > 0.3) result.analysis.imageSeverity = 'medium';
           else result.analysis.imageSeverity = 'low';
+
+          // Set category from top YOLO detection
+          if (imageResponse.data.detections.length > 0) {
+            const topDet = imageResponse.data.detections.reduce((a, b) => a.confidence > b.confidence ? a : b);
+            result.analysis.category = topDet.label;
+            result.category = topDet.label;
+          }
         }
       } catch (err) {
         console.warn('Image analysis failed:', err.message);
@@ -98,6 +115,7 @@ async function analyzeComplaint({ title, description, imageUrls, videoUrl, latit
 
           if (result.detectedLabels.length === 0 && textResponse.data.category) {
             result.detectedLabels = [textResponse.data.category];
+            result.category = textResponse.data.category;
           }
         }
       } catch (err) {
@@ -122,14 +140,11 @@ async function analyzeComplaint({ title, description, imageUrls, videoUrl, latit
       console.warn('Embedding generation failed:', err.message);
     }
 
-    // 5. Calculate combined severity
-    const severityMap = { 'low': 1, 'medium': 2, 'high': 3, 'critical': 4 };
-    const reverseSeverityMap = { 1: 'low', 2: 'medium', 3: 'high', 4: 'critical' };
-
-    const imageSev = severityMap[result.analysis.imageSeverity] || 2;
-    const textSev = severityMap[result.analysis.textSeverity] || 2;
-    const combinedSev = Math.round(0.6 * imageSev + 0.4 * textSev);
-    result.severity = reverseSeverityMap[Math.min(combinedSev, 4)] || 'medium';
+    // 5. Calculate combined severity — take the MAX of all severity sources
+    const imageSev = SEVERITY_RANK[result.analysis.imageSeverity] || 1;
+    const textSev = SEVERITY_RANK[result.analysis.textSeverity] || 1;
+    const combinedSev = Math.max(imageSev, textSev);
+    result.severity = RANK_TO_SEVERITY[Math.min(combinedSev, 4)] || 'medium';
 
     // 6. Calculate priority score
     result.priorityScore = calculatePriority(result.severity, result.analysis);
@@ -142,17 +157,17 @@ async function analyzeComplaint({ title, description, imageUrls, videoUrl, latit
 }
 
 function calculatePriority(severity, analysis) {
-  const severityMap = { 'low': 1, 'medium': 2, 'high': 3, 'critical': 4 };
-  const imageSev = severityMap[analysis.imageSeverity] || 2;
-  const textSev = severityMap[analysis.textSeverity] || 2;
-  const hazardScore = imageSev / 4;
+  const imageSev = SEVERITY_RANK[analysis.imageSeverity] || 1;
+  const textSev = SEVERITY_RANK[analysis.textSeverity] || 1;
+  const maxSev = Math.max(imageSev, textSev);
+  const hazardScore = maxSev / 4;
   const textScore = textSev / 4;
   const recencyScore = 1.0;
 
   const priorityScore = (
-    0.30 * hazardScore +
+    0.35 * hazardScore +
     0.25 * textScore +
-    0.20 * 0.5 +
+    0.15 * (analysis.confidence || 0.5) +
     0.15 * recencyScore +
     0.10 * 0.5
   );

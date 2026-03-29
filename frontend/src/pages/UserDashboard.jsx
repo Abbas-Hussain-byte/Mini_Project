@@ -4,7 +4,7 @@ import { complaintsAPI, analyticsAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import {
   FiPlusCircle, FiMap, FiClock, FiCheckCircle, FiAlertTriangle,
-  FiLoader, FiMapPin, FiTrendingUp, FiEye, FiChevronDown, FiChevronUp
+  FiLoader, FiMapPin, FiTrendingUp, FiEye, FiChevronDown, FiChevronUp, FiCopy
 } from 'react-icons/fi';
 
 const STATUS_COLORS = {
@@ -12,6 +12,7 @@ const STATUS_COLORS = {
   under_review: 'status-submitted',
   assigned: 'status-assigned',
   in_progress: 'status-in_progress',
+  pending_verification: 'status-in_progress',
   resolved: 'status-resolved',
   rejected: 'status-rejected',
   duplicate: 'status-rejected',
@@ -55,8 +56,9 @@ export default function UserDashboard() {
 
   const totalComplaints = complaints.length;
   const resolved = complaints.filter(c => c.status === 'resolved').length;
-  const inProgress = complaints.filter(c => ['in_progress', 'assigned', 'under_review'].includes(c.status)).length;
+  const inProgress = complaints.filter(c => ['in_progress', 'assigned', 'under_review', 'pending_verification'].includes(c.status)).length;
   const pending = complaints.filter(c => c.status === 'submitted').length;
+  const duplicateOrRejected = complaints.filter(c => ['duplicate', 'rejected'].includes(c.status)).length;
   const critical = complaints.filter(c => c.severity === 'critical' || c.severity === 'high').length;
 
   const stats = [
@@ -65,6 +67,13 @@ export default function UserDashboard() {
     { label: 'In Progress', value: inProgress, icon: <FiTrendingUp />, color: 'text-amber-400', bg: 'bg-amber-500/10' },
     { label: 'Pending', value: pending, icon: <FiClock />, color: 'text-blue-400', bg: 'bg-blue-500/10' },
   ];
+
+  // Non-duplicate complaints sorted by priority (highest first)
+  const activeComplaints = complaints
+    .filter(c => c.status !== 'duplicate')
+    .sort((a, b) => (b.priority_score || 0) - (a.priority_score || 0));
+
+  const duplicateComplaints = complaints.filter(c => c.status === 'duplicate');
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -99,6 +108,17 @@ export default function UserDashboard() {
         ))}
       </div>
 
+      {/* Breakdown note */}
+      {duplicateOrRejected > 0 && (
+        <div className="glass-card p-3 mb-4 flex items-center gap-2">
+          <FiCopy className="text-slate-500" size={14} />
+          <p className="text-xs text-slate-500">
+            {duplicateOrRejected} complaint{duplicateOrRejected > 1 ? 's' : ''} marked as duplicate/rejected (not shown below).
+            Breakdown: {resolved} resolved + {inProgress} in progress + {pending} pending + {duplicateOrRejected} duplicate/rejected = {totalComplaints} total
+          </p>
+        </div>
+      )}
+
       {/* Resolution Rate Bar */}
       {totalComplaints > 0 && (
         <div className="glass-card p-5 mb-8">
@@ -132,13 +152,13 @@ export default function UserDashboard() {
 
       {/* My Complaints */}
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-white">My Complaints</h2>
+        <h2 className="text-lg font-semibold text-white">My Complaints <span className="text-sm text-slate-500 font-normal">(sorted by priority)</span></h2>
         <Link to="/track" className="text-sm text-civic-accent hover:underline flex items-center gap-1">
           <FiEye size={14} /> View All
         </Link>
       </div>
 
-      {complaints.length === 0 ? (
+      {activeComplaints.length === 0 ? (
         <div className="glass-card p-12 text-center">
           <FiAlertTriangle className="w-12 h-12 text-slate-600 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-white mb-2">No complaints yet</h3>
@@ -149,7 +169,7 @@ export default function UserDashboard() {
         </div>
       ) : (
         <div className="space-y-3">
-          {complaints.slice(0, 10).map(c => (
+          {activeComplaints.slice(0, 10).map(c => (
             <div key={c.id} className="glass-card overflow-hidden hover:border-civic-accent/30 transition-all">
               <div className="p-5 cursor-pointer" onClick={() => setExpanded(expanded === c.id ? null : c.id)}>
                 <div className="flex items-start justify-between">
@@ -163,14 +183,15 @@ export default function UserDashboard() {
                     <p className="text-sm text-slate-400 line-clamp-1">{c.description}</p>
                     <div className="flex items-center gap-4 mt-2 text-xs text-slate-500 flex-wrap">
                       <span className="flex items-center gap-1"><FiClock size={11} /> {new Date(c.created_at).toLocaleDateString()}</span>
-                      {c.category && <span className="capitalize text-slate-400">{c.category.replace('_', ' ')}</span>}
+                      {c.category && <span className="capitalize text-slate-400">{c.category.replace(/_/g, ' ')}</span>}
                       {c.address && <span className="flex items-center gap-1 truncate max-w-xs"><FiMapPin size={11} /> {c.address}</span>}
                       {c.departments?.name && <span className="text-civic-accent">→ {c.departments.name}</span>}
+                      {c.priority_score > 0 && <span className="text-purple-400">Priority: {(c.priority_score * 100).toFixed(0)}%</span>}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 ml-4 shrink-0">
                     <span className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_COLORS[c.status]}`}>
-                      {c.status?.replace('_', ' ')}
+                      {c.status?.replace(/_/g, ' ')}
                     </span>
                     {expanded === c.id ? <FiChevronUp className="text-slate-400" /> : <FiChevronDown className="text-slate-400" />}
                   </div>
@@ -189,16 +210,21 @@ export default function UserDashboard() {
                       {c.ai_detected_labels?.length > 0 ? (
                         <div className="flex flex-wrap gap-2 mb-2">
                           {c.ai_detected_labels.map((label, i) => (
-                            <span key={i} className="px-2 py-1 rounded-md bg-civic-accent/10 text-civic-accent text-xs">{label}</span>
+                            <span key={i} className="px-2 py-1 rounded-md bg-civic-accent/10 text-civic-accent text-xs">{label.replace(/_/g, ' ')}</span>
                           ))}
                         </div>
-                      ) : <p className="text-xs text-slate-500 mb-2">Pending AI analysis</p>}
+                      ) : <p className="text-xs text-slate-500 mb-2">No AI labels detected</p>}
                       <p className="text-xs text-slate-500">Priority Score: <span className="text-civic-accent font-semibold">{(c.priority_score * 100).toFixed(0)}%</span></p>
                       {c.ai_analysis && Object.keys(c.ai_analysis).length > 0 && (
-                        <div className="mt-2 p-2 rounded-lg bg-white/[0.03] text-xs text-slate-400">
-                          {c.ai_analysis.hazards_detected && <p>Hazards: {c.ai_analysis.hazards_detected.join(', ')}</p>}
-                          {c.ai_analysis.text_category && <p>Category: {c.ai_analysis.text_category}</p>}
-                          {c.ai_analysis.text_severity && <p>Severity: {c.ai_analysis.text_severity}</p>}
+                        <div className="mt-2 p-2 rounded-lg bg-white/[0.03] text-xs text-slate-400 space-y-1">
+                          {c.ai_analysis.imageDetections?.length > 0 && (
+                            <p>🔍 Visual: {c.ai_analysis.imageDetections.map(d => `${d.label.replace(/_/g,' ')} (${(d.confidence*100).toFixed(0)}%)`).join(', ')}</p>
+                          )}
+                          {c.ai_analysis.textCategory && <p>📝 Text Category: {c.ai_analysis.textCategory.replace(/_/g, ' ')}</p>}
+                          {c.ai_analysis.textSeverity && <p>⚠️ Text Severity: {c.ai_analysis.textSeverity}</p>}
+                          {c.ai_analysis.imageSeverity && <p>📷 Image Severity: {c.ai_analysis.imageSeverity}</p>}
+                          {c.ai_analysis.category && <p>🏷️ AI Category: {c.ai_analysis.category.replace(/_/g, ' ')}</p>}
+                          {c.ai_analysis.confidence > 0 && <p>📊 Confidence: {(c.ai_analysis.confidence * 100).toFixed(0)}%</p>}
                         </div>
                       )}
                     </div>
@@ -225,7 +251,7 @@ export default function UserDashboard() {
                           <div key={i} className="flex items-start gap-3 text-xs">
                             <div className="mt-0.5"><FiCheckCircle className="text-civic-accent" size={13} /></div>
                             <div>
-                              <span className="text-slate-300">{u.new_status?.replace('_', ' ')}</span>
+                              <span className="text-slate-300">{u.new_status?.replace(/_/g, ' ')}</span>
                               {u.comment && <span className="text-slate-500"> — {u.comment}</span>}
                               <p className="text-slate-600 mt-0.5">{new Date(u.created_at).toLocaleString()}</p>
                             </div>
@@ -239,10 +265,10 @@ export default function UserDashboard() {
             </div>
           ))}
 
-          {complaints.length > 10 && (
+          {activeComplaints.length > 10 && (
             <div className="text-center py-4">
               <Link to="/track" className="text-civic-accent hover:underline text-sm">
-                View all {complaints.length} complaints →
+                View all {activeComplaints.length} complaints →
               </Link>
             </div>
           )}

@@ -81,24 +81,66 @@ LABEL_TO_CATEGORY = {
 
 # Severity keywords for rule-based fallback
 SEVERITY_KEYWORDS = {
-    'critical': ['fire', 'collapse', 'explosion', 'electrocution', 'flood', 'emergency', 'danger', 'life-threatening', 'sparking', 'exposed wire'],
-    'high': ['broken', 'damaged', 'fallen', 'exposed wires', 'waterlogging', 'accident', 'blocked', 'burst', 'overflow', 'deep pothole', 'major garbage', 'excess debris', 'sewage'],
-    'medium': ['crack', 'pothole', 'garbage', 'debris', 'waste', 'leaking', 'overflow', 'noise', 'littering', 'graffiti', 'stray', 'encroach'],
+    'critical': ['fire', 'collapse', 'explosion', 'electrocution', 'flood', 'emergency',
+                 'danger', 'life-threatening', 'sparking', 'exposed wire', 'live wire',
+                 'electric shock', 'high voltage', 'burning'],
+    'high': ['broken', 'damaged', 'fallen', 'exposed wires', 'waterlogging', 'accident',
+             'blocked', 'burst', 'overflow', 'deep pothole', 'major garbage', 'electric',
+             'excess debris', 'sewage', 'wire', 'pole', 'transformer', 'cable',
+             'power line', 'short circuit', 'fallen tree'],
+    'medium': ['crack', 'pothole', 'garbage', 'debris', 'waste', 'leaking', 'overflow',
+               'noise', 'littering', 'graffiti', 'stray', 'encroach', 'parking'],
     'low': ['minor', 'cosmetic', 'faded', 'uneven', 'small', 'slightly', 'peeling'],
 }
 
+# Inherent minimum severity per category — some issues are always dangerous
+CATEGORY_INHERENT_SEVERITY = {
+    'damaged_electric_wires': 'high',
+    'electricity': 'high',
+    'fallen_trees': 'high',
+    'damaged_road': 'medium',
+    'pothole': 'medium',
+    'vandalism': 'medium',
+    'dead_animal': 'medium',
+    'damaged_concrete': 'medium',
+    'sewage': 'high',
+    'drainage': 'medium',
+    'water_supply': 'medium',
+    'broken_road_sign': 'medium',
+    'littering': 'low',
+    'illegal_parking': 'low',
+    'other': 'low',
+}
+
+SEVERITY_RANK = {'low': 1, 'medium': 2, 'high': 3, 'critical': 4}
+RANK_TO_SEVERITY = {1: 'low', 2: 'medium', 3: 'high', 4: 'critical'}
+
 # Title templates for image-only mode
 LABEL_TITLES = {
-    'damaged_road': 'Damaged Road Surface Detected',
-    'pothole': 'Pothole Detected on Road',
-    'illegal_parking': 'Illegal Parking Violation',
-    'broken_road_sign': 'Broken/Missing Road Sign',
-    'fallen_trees': 'Fallen Tree Blocking Area',
-    'littering': 'Littering / Garbage Accumulation',
-    'vandalism': 'Vandalism / Property Damage',
-    'dead_animal': 'Dead Animal on Road',
-    'damaged_concrete': 'Damaged Concrete Structure',
-    'damaged_electric_wires': 'Damaged / Exposed Electric Wires',
+    'damaged_road': 'Damaged Road Surface Detected — Requires Road Maintenance',
+    'pothole': 'Pothole Detected on Road — Risk of Vehicle Damage',
+    'illegal_parking': 'Illegal Parking Violation — Obstructing Traffic Flow',
+    'broken_road_sign': 'Broken/Missing Road Sign — Traffic Safety Hazard',
+    'fallen_trees': 'Fallen Tree Blocking Area — Urgent Clearance Needed',
+    'littering': 'Littering / Garbage Accumulation — Sanitation Required',
+    'vandalism': 'Vandalism / Property Damage — Law Enforcement Alert',
+    'dead_animal': 'Dead Animal on Road — Biohazard Cleanup Needed',
+    'damaged_concrete': 'Damaged Concrete Structure — Public Works Repair Needed',
+    'damaged_electric_wires': 'Damaged / Exposed Electric Wires — Electrocution Risk',
+}
+
+# Detailed descriptions for image-only auto-generated complaints
+LABEL_DESCRIPTIONS = {
+    'damaged_road': 'AI analysis detected damaged road surface. The road shows signs of deterioration including cracks, breaks, or surface damage that could be hazardous for vehicles and pedestrians. Requires attention from the Roads & Infrastructure department.',
+    'pothole': 'AI analysis detected a pothole on the road surface. Potholes can cause vehicle damage and accidents, especially at night. Immediate repair recommended by the Roads department.',
+    'illegal_parking': 'AI analysis detected an illegally parked vehicle obstructing normal traffic flow or blocking public access. Traffic enforcement action recommended.',
+    'broken_road_sign': 'AI analysis detected a broken, damaged, or missing road sign. This is a traffic safety concern as missing signage can lead to accidents. Traffic department should replace/repair the sign.',
+    'fallen_trees': 'AI analysis detected a fallen tree blocking the road or public area. This poses an immediate obstruction hazard and needs urgent clearance by the Parks & Environment department.',
+    'littering': 'AI analysis detected littering and garbage accumulation in the area. Sanitation department should arrange for cleanup to maintain public hygiene.',
+    'vandalism': 'AI analysis detected vandalism or property damage. Evidence of intentional destruction of public or private property. Law enforcement notification recommended.',
+    'dead_animal': 'AI analysis detected a dead animal on or near the road. This is a biohazard and sanitation concern requiring prompt removal by the Sanitation department.',
+    'damaged_concrete': 'AI analysis detected damage to a concrete structure such as a sidewalk, wall, or overpass. Public Works department should assess structural integrity and arrange repairs.',
+    'damaged_electric_wires': 'AI analysis detected damaged or exposed electric wires/poles. THIS IS A HIGH-PRIORITY SAFETY HAZARD with risk of electrocution. Electricity department must be notified immediately for emergency repair.',
 }
 
 
@@ -120,16 +162,42 @@ def load_yolo():
 
 
 def load_text_classifier():
-    """Load lightweight zero-shot classifier (DistilBERT — 5x faster than BART)"""
+    """Load text classifier — fine-tuned DistilBERT if available, else zero-shot."""
     if models['text_classifier'] is None:
-        print("🔄 Loading DistilBERT-MNLI classifier (~250MB)...")
-        from transformers import pipeline
-        models['text_classifier'] = pipeline(
-            'zero-shot-classification',
-            model='typeform/distilbert-base-uncased-mnli',
-            device=-1  # CPU
-        )
-        print("✅ DistilBERT classifier loaded")
+        finetuned_path = os.path.join(os.path.dirname(__file__), 'models', 'bert-civic', 'best_model')
+        label_map_path = os.path.join(os.path.dirname(__file__), 'models', 'bert-civic', 'label_map.json')
+        
+        if os.path.exists(finetuned_path) and os.path.exists(label_map_path):
+            print(f"🔄 Loading fine-tuned DistilBERT from: {finetuned_path}")
+            from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
+            import json
+            
+            tokenizer = DistilBertTokenizer.from_pretrained(finetuned_path)
+            model = DistilBertForSequenceClassification.from_pretrained(finetuned_path)
+            model.eval()
+            
+            with open(label_map_path, 'r') as f:
+                label_map = json.load(f)
+            
+            models['text_classifier'] = {
+                'type': 'finetuned',
+                'model': model,
+                'tokenizer': tokenizer,
+                'id_to_category': {int(k): v for k, v in label_map['id_to_category'].items()},
+            }
+            print("✅ Fine-tuned DistilBERT loaded (high accuracy mode)")
+        else:
+            print("🔄 Loading DistilBERT-MNLI zero-shot classifier (~250MB)...")
+            from transformers import pipeline
+            models['text_classifier'] = {
+                'type': 'zeroshot',
+                'pipeline': pipeline(
+                    'zero-shot-classification',
+                    model='typeform/distilbert-base-uncased-mnli',
+                    device=-1  # CPU
+                ),
+            }
+            print("✅ Zero-shot DistilBERT classifier loaded")
     return models['text_classifier']
 
 
@@ -165,13 +233,21 @@ def download_image(url):
         return None
 
 
-def classify_severity(text):
-    """Rule-based severity classification from text"""
+def classify_severity(text, category=None):
+    """Rule-based severity classification from text + category.
+    Returns the maximum of keyword-based severity and category inherent severity."""
     text_lower = text.lower()
+    text_sev = 'medium'  # default
     for severity, keywords in SEVERITY_KEYWORDS.items():
         if any(kw in text_lower for kw in keywords):
-            return severity
-    return 'medium'
+            text_sev = severity
+            break
+
+    # Also consider the inherent severity of the category
+    cat_sev = CATEGORY_INHERENT_SEVERITY.get(category, 'low') if category else 'low'
+
+    # Return the higher of the two
+    return RANK_TO_SEVERITY[max(SEVERITY_RANK.get(text_sev, 2), SEVERITY_RANK.get(cat_sev, 1))]
 
 
 def extract_video_frames(video_bytes, max_frames=5):
@@ -242,7 +318,9 @@ def analyze_image():
             return jsonify({'error': 'Failed to load image'}), 400
 
         model = load_yolo()
-        results = model(image, conf=0.25, verbose=False)
+        # Use lower conf for fine-tuned model (it detects specific urban issues)
+        conf_threshold = 0.15 if os.path.exists(os.path.join(os.path.dirname(__file__), 'models', 'yolo-urban', 'best.pt')) else 0.25
+        results = model(image, conf=conf_threshold, verbose=False)
 
         detections = []
         for result in results:
@@ -262,7 +340,7 @@ def analyze_image():
         return jsonify({
             'detections': detections,
             'count': len(detections),
-            'model': 'yolov8n'
+            'model': 'yolov8-finetuned' if conf_threshold == 0.15 else 'yolov8n'
         })
 
     except Exception as e:
@@ -272,7 +350,7 @@ def analyze_image():
 
 @app.route('/ml/classify-text', methods=['POST'])
 def classify_text():
-    """Zero-shot text classification for complaint text"""
+    """Text classification for complaint text (fine-tuned or zero-shot)"""
     try:
         data = request.json
         text = data.get('text', '')
@@ -281,27 +359,60 @@ def classify_text():
             return jsonify({'error': 'text is required'}), 400
 
         classifier = load_text_classifier()
+        # First pass: get category, then compute severity with category awareness
+        category = 'other'
+        confidence = 0
 
-        result = classifier(
-            text,
-            candidate_labels=BERT_CATEGORIES,
-            multi_label=False
-        )
+        if classifier['type'] == 'finetuned':
+            import torch
+            tokenizer = classifier['tokenizer']
+            model = classifier['model']
+            id_to_cat = classifier['id_to_category']
 
-        raw_label = result['labels'][0]
-        category = LABEL_TO_CATEGORY.get(raw_label, 'other')
-        confidence = result['scores'][0]
-        severity = classify_severity(text)
+            inputs = tokenizer(text, return_tensors='pt', truncation=True, max_length=128, padding='max_length')
+            with torch.no_grad():
+                outputs = model(**inputs)
+            
+            probs = torch.softmax(outputs.logits, dim=1)[0]
+            top_indices = torch.argsort(probs, descending=True)[:5]
 
-        return jsonify({
-            'category': category,
-            'confidence': round(confidence, 4),
-            'severity': severity,
-            'all_scores': {
-                LABEL_TO_CATEGORY.get(label, label): round(score, 4)
-                for label, score in zip(result['labels'][:5], result['scores'][:5])
-            }
-        })
+            category = id_to_cat.get(int(top_indices[0]), 'other')
+            confidence = float(probs[top_indices[0]])
+
+            # Category-aware severity
+            severity = classify_severity(text, category)
+
+            return jsonify({
+                'category': category,
+                'confidence': round(confidence, 4),
+                'severity': severity,
+                'model': 'finetuned-distilbert',
+                'all_scores': {
+                    id_to_cat.get(int(idx), f'class_{idx}'): round(float(probs[idx]), 4)
+                    for idx in top_indices
+                }
+            })
+        else:
+            pipe = classifier['pipeline']
+            result = pipe(text, candidate_labels=BERT_CATEGORIES, multi_label=False)
+
+            raw_label = result['labels'][0]
+            category = LABEL_TO_CATEGORY.get(raw_label, 'other')
+            confidence = result['scores'][0]
+
+            # Category-aware severity
+            severity = classify_severity(text, category)
+
+            return jsonify({
+                'category': category,
+                'confidence': round(confidence, 4),
+                'severity': severity,
+                'model': 'zeroshot-distilbert',
+                'all_scores': {
+                    LABEL_TO_CATEGORY.get(label, label): round(score, 4)
+                    for label, score in zip(result['labels'][:5], result['scores'][:5])
+                }
+            })
 
     except Exception as e:
         print(f"❌ Text classification error: {e}")
@@ -311,7 +422,8 @@ def classify_text():
 @app.route('/ml/analyze-complete', methods=['POST'])
 def analyze_complete():
     """Complete analysis: image + optional text. Returns everything needed for a complaint.
-    Used for image-only mode where AI auto-generates title and description."""
+    Used for image-only mode where AI auto-generates title and description.
+    Also corroborates YOLO visual detection with BERT text classification."""
     try:
         image = None
         text = ''
@@ -338,10 +450,12 @@ def analyze_complete():
             'labels': []
         }
 
-        # 1. Image analysis
+        # 1. Image analysis with YOLO
         if image is not None:
             model = load_yolo()
-            yolo_results = model(image, conf=0.25, verbose=False)
+            # Use lower confidence for fine-tuned model
+            conf_threshold = 0.15 if os.path.exists(os.path.join(os.path.dirname(__file__), 'models', 'yolo-urban', 'best.pt')) else 0.25
+            yolo_results = model(image, conf=conf_threshold, verbose=False)
             for r in yolo_results:
                 for box in r.boxes:
                     cls_id = int(box.cls[0])
@@ -358,40 +472,81 @@ def analyze_complete():
                 top = max(result['detections'], key=lambda d: d['confidence'])
                 result['category'] = top['label']
                 result['labels'] = list(set(d['label'] for d in result['detections']))
+
+                # Use detailed descriptive title and description
                 result['title'] = LABEL_TITLES.get(top['label'], f'{top["label"].replace("_", " ").title()} Detected')
-                result['description'] = f"AI detected: {', '.join(result['labels'])}. Highest confidence: {top['label']} ({top['confidence']*100:.1f}%)."
+                # Use pre-written detailed description, append detection details
+                base_desc = LABEL_DESCRIPTIONS.get(top['label'], f'AI detected: {top["label"].replace("_", " ")}.')
+                detection_details = ', '.join(
+                    f'{d["label"].replace("_", " ")} ({d["confidence"]*100:.0f}% confidence)'
+                    for d in sorted(result['detections'], key=lambda x: -x['confidence'])
+                )
+                result['description'] = f'{base_desc} Detected issues: {detection_details}.'
                 result['confidence'] = top['confidence']
 
-                # Severity from image confidence
+                # Severity: combine confidence-based AND category-inherent severity
                 if top['confidence'] > 0.8:
-                    result['severity'] = 'critical'
-                elif top['confidence'] > 0.6:
-                    result['severity'] = 'high'
-                elif top['confidence'] > 0.4:
-                    result['severity'] = 'medium'
+                    conf_severity = 'critical'
+                elif top['confidence'] > 0.5:
+                    conf_severity = 'high'
+                elif top['confidence'] > 0.3:
+                    conf_severity = 'medium'
                 else:
-                    result['severity'] = 'low'
+                    conf_severity = 'low'
 
-        # 2. Text classification (if text provided)
-        if text:
-            classifier = load_text_classifier()
-            text_result = classifier(text, candidate_labels=BERT_CATEGORIES, multi_label=False)
-            text_category = LABEL_TO_CATEGORY.get(text_result['labels'][0], 'other')
-            text_severity = classify_severity(text)
+                cat_severity = CATEGORY_INHERENT_SEVERITY.get(top['label'], 'medium')
+                # Take the HIGHER of confidence-based and category-inherent severity
+                result['severity'] = RANK_TO_SEVERITY[max(
+                    SEVERITY_RANK.get(conf_severity, 2),
+                    SEVERITY_RANK.get(cat_severity, 2)
+                )]
 
-            # If no image detections, use text
-            if not result['detections']:
-                result['category'] = text_category
-                result['severity'] = text_severity
-                result['title'] = f'{text_category.replace("_", " ").title()} Issue Reported'
-                result['description'] = text
-                result['confidence'] = text_result['scores'][0]
+        # 2. Text classification — run on user text OR on YOLO-generated description
+        analysis_text = text if text else (result['description'] if result['detections'] else '')
+        if analysis_text and len(analysis_text) > 5:
+            try:
+                classifier = load_text_classifier()
+                text_severity = classify_severity(analysis_text, result.get('category'))
 
-            result['text_analysis'] = {
-                'category': text_category,
-                'severity': text_severity,
-                'confidence': round(text_result['scores'][0], 4)
-            }
+                if classifier['type'] == 'finetuned':
+                    import torch
+                    tokenizer = classifier['tokenizer']
+                    bert_model = classifier['model']
+                    id_to_cat = classifier['id_to_category']
+                    inputs = tokenizer(analysis_text, return_tensors='pt', truncation=True, max_length=128, padding='max_length')
+                    with torch.no_grad():
+                        outputs = bert_model(**inputs)
+                    probs = torch.softmax(outputs.logits, dim=1)[0]
+                    top_idx = int(torch.argmax(probs))
+                    text_category = id_to_cat.get(top_idx, 'other')
+                    text_confidence = float(probs[top_idx])
+                else:
+                    pipe = classifier['pipeline']
+                    text_result = pipe(analysis_text, candidate_labels=BERT_CATEGORIES, multi_label=False)
+                    text_category = LABEL_TO_CATEGORY.get(text_result['labels'][0], 'other')
+                    text_confidence = text_result['scores'][0]
+
+                # If no image detections, use text classification fully
+                if not result['detections']:
+                    result['category'] = text_category
+                    result['severity'] = text_severity
+                    result['title'] = f'{text_category.replace("_", " ").title()} Issue Reported'
+                    result['description'] = text if text else f'Text analysis detected: {text_category.replace("_", " ")}'
+                    result['confidence'] = text_confidence
+                else:
+                    # Both available: take higher severity
+                    result['severity'] = RANK_TO_SEVERITY[max(
+                        SEVERITY_RANK.get(result['severity'], 2),
+                        SEVERITY_RANK.get(text_severity, 2)
+                    )]
+
+                result['text_analysis'] = {
+                    'category': text_category,
+                    'severity': text_severity,
+                    'confidence': round(text_confidence, 4)
+                }
+            except Exception as te:
+                print(f"⚠️ Text classification in analyze-complete failed: {te}")
 
         return jsonify(result)
 
@@ -541,10 +696,10 @@ if __name__ == '__main__':
 
     print(f"""
 ╔══════════════════════════════════════════╗
-║       CivicPulse ML Service             ║
-║       Port: {port}                         ║
-║       Models: Lazy-loaded on first use  ║
-║       YOLO auto-install: DISABLED       ║
+║       CivicPulse ML Service              ║
+║       Port: {port}                       ║
+║       Models: Lazy-loaded on first use   ║
+║       YOLO auto-install: DISABLED        ║
 ╚══════════════════════════════════════════╝
     """)
 
