@@ -28,16 +28,6 @@ export default function LoginPage() {
 
     try {
       let email = identifier;
-
-      if (loginType === 'citizen') {
-        // Citizen login: convert phone to proxy email
-        const cleanPhone = identifier.replace(/[^0-9]/g, '');
-        if (cleanPhone.length >= 10) {
-          email = `citizen_${cleanPhone}@civicpulse.com`;
-        } else {
-          throw new Error('Please enter a valid phone number (at least 10 digits)');
-        }
-      }
       // Admin login: email is used directly
 
       const { data, error: authError } = await supabase.auth.signInWithPassword({
@@ -163,7 +153,7 @@ export default function LoginPage() {
             {isAdmin ? 'Admin Login' : 'Citizen Login'}
           </h2>
           <p style={{ color: '#8b949e', fontSize: '0.85rem' }}>
-            {isAdmin ? 'Access the administrative dashboard' : 'Sign in with your registered phone number'}
+            {isAdmin ? 'Access the administrative dashboard' : 'Sign in with your registered email address'}
           </p>
         </div>
 
@@ -178,17 +168,17 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '1.25rem' }}>
             <label style={{ display: 'block', color: '#c9d1d9', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 500 }}>
-              {isAdmin ? 'Email Address' : 'Phone Number'}
+              Email Address
             </label>
             <div style={{
               display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)',
               borderRadius: '10px', border: `1px solid ${identifier ? accentColor + '40' : 'rgba(48, 54, 61, 0.8)'}`,
               padding: '0 1rem', transition: 'border-color 0.3s'
             }}>
-              {isAdmin ? <FiMail color="#8b949e" /> : <FiPhone color="#8b949e" />}
+              {isAdmin ? <FiMail color="#8b949e" /> : <FiMail color="#8b949e" />}
               <input
-                type={isAdmin ? 'email' : 'tel'}
-                placeholder={isAdmin ? 'admin@example.com' : 'Enter your registered phone number'}
+                type="email"
+                placeholder={isAdmin ? 'admin@example.com' : 'Enter your registered email (e.g. someone@gmail.com)'}
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 required
@@ -243,7 +233,7 @@ export default function LoginPage() {
         {loginType === 'citizen' && (
           <p style={{ textAlign: 'center', color: '#8b949e', marginTop: '1.5rem', fontSize: '0.85rem' }}>
             Don't have an account?{' '}
-            <Link to="/register" style={{ color: '#06b6d4', textDecoration: 'none', fontWeight: 500 }}>Register with Phone</Link>
+            <Link to="/register" style={{ color: '#06b6d4', textDecoration: 'none', fontWeight: 500 }}>Register Account</Link>
           </p>
         )}
 
