@@ -547,7 +547,7 @@ export default function AdminDashboard() {
                 {users.map(u => (
                   <tr key={u.id} style={{ borderBottom: '1px solid rgba(48,54,61,0.3)' }}>
                     <td style={{ padding: '0.75rem', color: '#f0f6fc', fontSize: '0.85rem' }}>{u.full_name || '—'}</td>
-                    <td style={{ padding: '0.75rem', color: '#8b949e', fontSize: '0.85rem' }}>{u.email?.includes('@civicpulse.local') ? '(phone user)' : u.email}</td>
+                    <td style={{ padding: '0.75rem', color: '#8b949e', fontSize: '0.85rem' }}>{u.email?.includes('@civicpulse.com') ? '(phone user)' : u.email}</td>
                     <td style={{ padding: '0.75rem', color: '#8b949e', fontSize: '0.85rem' }}>{u.phone || '—'}</td>
                     <td style={{ padding: '0.75rem' }}>
                       <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', borderRadius: '4px',

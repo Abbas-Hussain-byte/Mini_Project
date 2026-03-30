@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { FiShield, FiMapPin, FiBarChart2, FiZap, FiArrowRight, FiCamera, FiUsers } from 'react-icons/fi';
-import backgroundImg from '../assets/img-1.jpg';
+import backgroundImg from '../assets/img-1.avif';
 
 export default function HomePage() {
   const { user } = useAuth();

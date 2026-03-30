@@ -33,7 +33,7 @@ export default function LoginPage() {
         // Citizen login: convert phone to proxy email
         const cleanPhone = identifier.replace(/[^0-9]/g, '');
         if (cleanPhone.length >= 10) {
-          email = `citizen_${cleanPhone}@civicpulse.local`;
+          email = `citizen_${cleanPhone}@civicpulse.com`;
         } else {
           throw new Error('Please enter a valid phone number (at least 10 digits)');
         }

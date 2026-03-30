@@ -40,7 +40,7 @@ export default function RegisterPage() {
     try {
       // Generate a proxy email from phone number for Supabase auth
       const cleanPhone = formData.phone.replace(/[^0-9]/g, '');
-      const proxyEmail = `citizen_${cleanPhone}@civicpulse.local`;
+      const proxyEmail = `citizen_${cleanPhone}@civicpulse.com`;
 
       const { data, error: authError } = await supabase.auth.signUp({
         email: proxyEmail,
