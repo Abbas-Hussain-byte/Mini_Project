@@ -38,21 +38,20 @@ router.post('/register-dept-head', async (req, res, next) => {
       return res.status(400).json({ error: 'Email, password, full_name, and department_id are required' });
     }
 
-    // 1. Create Supabase auth user with real email
-    const { data, error } = await supabase.auth.signUp({
+    const { supabaseAdmin } = require('../models/supabaseClient');
+
+    // 1. Create user via admin API (bypasses email confirmation)
+    const { data, error } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
-      options: {
-        data: { full_name, phone: phone || '', role: 'department_head' }
-      }
+      email_confirm: true,
+      user_metadata: { full_name, phone: phone || '', role: 'department_head' }
     });
 
     if (error) return res.status(400).json({ error: error.message });
 
-    // 2. Update profile to set role as department_head and link department
+    // 2. Update profile to set role and link department
     if (data.user) {
-      const { supabaseAdmin } = require('../models/supabaseClient');
-
       await supabaseAdmin
         .from('profiles')
         .update({
@@ -77,8 +76,7 @@ router.post('/register-dept-head', async (req, res, next) => {
 
     res.status(201).json({
       message: 'Department head registered successfully',
-      user: data.user,
-      session: data.session
+      user: data.user
     });
   } catch (err) { next(err); }
 });

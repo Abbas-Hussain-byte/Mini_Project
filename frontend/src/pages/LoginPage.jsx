@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FiMail, FiLock, FiPhone, FiShield, FiUser } from 'react-icons/fi';
+import { FiMail, FiLock, FiShield, FiUser } from 'react-icons/fi';
 import { supabase } from '../services/supabase';
 
 export default function LoginPage() {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
-  const [loginType, setLoginType] = useState('citizen'); // 'citizen', 'admin', or 'dept_head'
-  const [identifier, setIdentifier] = useState('');
+  const [loginType, setLoginType] = useState('citizen');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -27,31 +27,16 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      let email = identifier;
-
-      if (loginType === 'citizen') {
-        // Citizen login: convert phone to proxy email
-        const cleanPhone = identifier.replace(/[^0-9]/g, '');
-        if (cleanPhone.length >= 10) {
-          email = `citizen_${cleanPhone}@civicpulse.local`;
-        } else {
-          throw new Error('Please enter a valid phone number (at least 10 digits)');
-        }
+      if (!email || !email.includes('@')) {
+        throw new Error('Please enter a valid email address');
       }
-      // Admin and dept_head login: email is used directly
-      // Admin login: email is used directly
 
       const { data, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password
       });
 
-      if (authError) {
-        if (loginType === 'citizen') {
-          throw new Error('Invalid phone number or password. Please check and try again.');
-        }
-        throw authError;
-      }
+      if (authError) throw authError;
 
       // Store token
       if (data.session) {
@@ -66,7 +51,7 @@ export default function LoginPage() {
         .single();
 
       if (loginType === 'admin' && userProfile?.role !== 'admin') {
-        setError('This account does not have admin privileges. Use citizen login instead.');
+        setError('This account does not have admin privileges.');
         await supabase.auth.signOut();
         localStorage.removeItem('access_token');
         setLoading(false);
@@ -139,7 +124,7 @@ export default function LoginPage() {
             { id: 'admin', label: 'Admin', icon: <FiShield />, color: '#f59e0b' },
           ].map(tab => (
             <button key={tab.id} type="button"
-              onClick={() => { setLoginType(tab.id); setIdentifier(''); setError(''); }}
+              onClick={() => { setLoginType(tab.id); setEmail(''); setError(''); }}
               style={{
                 flex: 1, padding: '0.65rem 0.5rem', borderRadius: '10px', border: 'none', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
@@ -166,8 +151,7 @@ export default function LoginPage() {
             {isAdmin ? 'Admin Login' : isDeptHead ? 'Department Head Login' : 'Citizen Login'}
           </h2>
           <p style={{ color: '#8b949e', fontSize: '0.85rem' }}>
-            {isAdmin ? 'Access the administrative dashboard' : isDeptHead ? 'Manage your department, workers & complaints' : 'Sign in with your registered phone number'}
-            {isAdmin ? 'Access the administrative dashboard' : 'Sign in with your registered email address'}
+            {isAdmin ? 'Access the administrative dashboard' : isDeptHead ? 'Manage your department, workers & complaints' : 'Sign in with your registered email'}
           </p>
         </div>
 
@@ -182,24 +166,19 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '1.25rem' }}>
             <label style={{ display: 'block', color: '#c9d1d9', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 500 }}>
-              {loginType === 'citizen' ? 'Phone Number' : 'Email Address'}
               Email Address
             </label>
             <div style={{
               display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)',
-              borderRadius: '10px', border: `1px solid ${identifier ? accentColor + '40' : 'rgba(48, 54, 61, 0.8)'}`,
+              borderRadius: '10px', border: `1px solid ${email ? accentColor + '40' : 'rgba(48, 54, 61, 0.8)'}`,
               padding: '0 1rem', transition: 'border-color 0.3s'
             }}>
-              {loginType === 'citizen' ? <FiPhone color="#8b949e" /> : <FiMail color="#8b949e" />}
-              <input
-                type={loginType === 'citizen' ? 'tel' : 'email'}
-                placeholder={loginType === 'citizen' ? 'Enter your registered phone number' : loginType === 'dept_head' ? 'Enter your department email' : 'admin@example.com'}
-              {isAdmin ? <FiMail color="#8b949e" /> : <FiMail color="#8b949e" />}
+              <FiMail color="#8b949e" />
               <input
                 type="email"
-                placeholder={isAdmin ? 'admin@example.com' : 'Enter your registered email (e.g. someone@gmail.com)'}
-                value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder={isAdmin ? 'admin@example.com' : isDeptHead ? 'depthead@example.com' : 'you@gmail.com'}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
                 style={{
                   flex: 1, background: 'transparent', border: 'none', outline: 'none',

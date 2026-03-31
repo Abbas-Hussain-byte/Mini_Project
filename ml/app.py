@@ -568,6 +568,15 @@ def analyze_complete():
             except Exception as te:
                 print(f"⚠️ Text classification in analyze-complete failed: {te}")
 
+        # Final safety net — never return generic titles
+        generic_titles = ['civic issue reported', 'image submission', 'civic issue detected via image analysis']
+        if result['title'].lower().strip() in generic_titles:
+            cat = result['category']
+            cat_label = cat.replace('_', ' ').title() if cat != 'other' else 'General Civic'
+            result['title'] = f'{cat_label} Issue Reported'
+            if result['description'].lower().strip() in ['', 'civic issue detected via image analysis.', 'civic issue detected via image analysis']:
+                result['description'] = f'A {cat.replace("_", " ")} issue has been detected and reported via AI analysis.'
+
         return jsonify(result)
 
     except Exception as e:

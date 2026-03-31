@@ -21,6 +21,15 @@ function ProtectedRoute({ children, adminOnly = false }) {
   return children;
 }
 
+/** Redirect admins away from citizen pages to /dashboard */
+function AdminRedirect({ children }) {
+  const { user, profile, loading } = useAuth();
+  if (loading) return <div className="flex items-center justify-center h-screen"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-civic-accent"></div></div>;
+  if (!user) return <Navigate to="/login" />;
+  if (profile?.role === 'admin') return <Navigate to="/dashboard" />;
+  return children;
+}
+
 export default function App() {
   return (
     <AuthProvider>
@@ -34,15 +43,15 @@ export default function App() {
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/register-dept-head" element={<RegisterDeptHeadPage />} />
 
-              {/* Citizen Routes */}
+              {/* Citizen Routes — admins get redirected to /dashboard */}
               <Route path="/my-dashboard" element={
-                <ProtectedRoute><UserDashboard /></ProtectedRoute>
+                <AdminRedirect><ProtectedRoute><UserDashboard /></ProtectedRoute></AdminRedirect>
               } />
               <Route path="/submit" element={
                 <ProtectedRoute><SubmitComplaint /></ProtectedRoute>
               } />
               <Route path="/track" element={
-                <ProtectedRoute><TrackComplaint /></ProtectedRoute>
+                <AdminRedirect><ProtectedRoute><TrackComplaint /></ProtectedRoute></AdminRedirect>
               } />
 
               {/* Public */}
@@ -53,7 +62,7 @@ export default function App() {
                 <ProtectedRoute adminOnly><AdminDashboard /></ProtectedRoute>
               } />
               <Route path="/departments" element={
-                <ProtectedRoute adminOnly><DepartmentDashboard /></ProtectedRoute>
+                <ProtectedRoute><DepartmentDashboard /></ProtectedRoute>
               } />
               <Route path="/cctv" element={
                 <ProtectedRoute adminOnly><CCTVMonitor /></ProtectedRoute>

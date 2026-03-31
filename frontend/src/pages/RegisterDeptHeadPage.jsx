@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { supabase } from '../services/supabase';
 import { departmentsAPI, authAPI } from '../services/api';
 import { FiUser, FiMail, FiPhone, FiLock, FiBriefcase, FiCheckCircle } from 'react-icons/fi';
 
@@ -46,39 +45,24 @@ export default function RegisterDeptHeadPage() {
 
     setLoading(true);
     try {
-      const { data, error: authError } = await supabase.auth.signUp({
+      // Use the backend API which handles BOTH auth user creation AND profile/department linking
+      const res = await authAPI.registerDeptHead({
         email: formData.email,
         password: formData.password,
-        options: {
-          data: {
-            full_name: formData.fullName,
-            phone: formData.phone,
-            role: 'department_head'
-          }
-        }
+        full_name: formData.fullName,
+        phone: formData.phone,
+        department_id: formData.departmentId
       });
 
-      if (authError) throw authError;
-
-      // Update profile and department via backend API
-      if (data.user) {
-        try {
-          await authAPI.registerDeptHead({
-            email: formData.email,
-            password: formData.password,
-            full_name: formData.fullName,
-            phone: formData.phone,
-            department_id: formData.departmentId
-          });
-        } catch (apiErr) {
-          // If backend call fails, still show success since auth user is created
-          console.warn('Backend profile update may have failed:', apiErr);
-        }
+      // Store token if session returned
+      if (res.data?.session?.access_token) {
+        localStorage.setItem('access_token', res.data.session.access_token);
       }
 
       setSuccess(true);
     } catch (err) {
-      setError(err.message || 'Registration failed');
+      const msg = err.response?.data?.error || err.message || 'Registration failed';
+      setError(msg);
     } finally {
       setLoading(false);
     }

@@ -27,7 +27,6 @@ export default function Navbar() {
   const adminLinks = [
     { to: '/', label: 'Home', icon: <FiHome /> },
     { to: '/dashboard', label: 'Admin Panel', icon: <FiBarChart2 /> },
-    { to: '/departments', label: 'Departments', icon: <FiUsers /> },
     { to: '/cctv', label: 'CCTV', icon: <FiMonitor /> },
     { to: '/heatmap', label: 'Heatmap', icon: <FiMap /> },
     { to: '/submit', label: 'Report Issue', icon: <FiPlusCircle /> },

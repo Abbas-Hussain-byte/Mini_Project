@@ -54,7 +54,7 @@ exports.createComplaint = async (req, res, next) => {
     let priorityScore = 0;
     let aiTitle = title || 'Civic Issue Reported';
     let aiDescription = description || '';
-//     const isEmergency = is_emergency === 'true' || is_emergency === true;
+    const isEmergency = is_emergency === 'true' || is_emergency === true;
     let aiCategory = category || 'other';
 
     try {

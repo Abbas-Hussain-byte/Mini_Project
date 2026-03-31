@@ -51,7 +51,7 @@ export default function RegisterPage() {
 
       if (authError) {
         if (authError.message.includes('already registered')) {
-          throw new Error('An account with this phone number already exists. Please log in.');
+          throw new Error('An account with this email already exists. Please log in.');
         }
         throw authError;
       }

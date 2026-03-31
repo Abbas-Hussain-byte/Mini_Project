@@ -153,6 +153,20 @@ async function analyzeComplaint({ title, description, imageUrls, videoUrl, latit
     console.error('AI analysis pipeline error:', err.message);
   }
 
+  // 7. Fix generic titles/descriptions — NEVER return "Civic Issue Reported" or "image submission"
+  const GENERIC_TITLES = ['civic issue reported', 'image submission', 'civic issue detected via image analysis'];
+  if (GENERIC_TITLES.includes((result.title || '').toLowerCase().trim())) {
+    const cat = result.category || result.analysis?.category || result.analysis?.textCategory || 'other';
+    const catLabel = cat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    result.title = `${catLabel} Issue Reported`;
+  }
+  const GENERIC_DESCS = ['', 'image-based complaint', 'civic issue detected via image analysis.', 'civic issue detected via image analysis'];
+  if (GENERIC_DESCS.includes((result.description || '').toLowerCase().trim())) {
+    const cat = result.category || 'civic';
+    const catLabel = cat.replace(/_/g, ' ');
+    result.description = `A ${catLabel} issue has been detected and reported. AI analysis has been applied to categorize and prioritize this complaint.`;
+  }
+
   return result;
 }
 
@@ -174,18 +188,11 @@ function calculatePriority(severity, analysis) {
   // New formula: category danger is weighted highest (35%)
   // This ensures electric wires (0.95) gets very different score from littering (0.20)
   const priorityScore = (
-//     0.35 * categoryDanger +
-//     0.25 * hazardScore +
-//     0.20 * textScore +
-//     0.10 * recencyScore +
-//     0.10 * confidence
-    
-    0.35 * hazardScore +
-    0.25 * textScore +
-    0.15 * (analysis.confidence || 0.5) +
-    0.15 * recencyScore +
-    0.10 * 0.5
-
+    0.35 * categoryDanger +
+    0.25 * hazardScore +
+    0.20 * textScore +
+    0.10 * recencyScore +
+    0.10 * confidence
   );
 
   return parseFloat(Math.min(priorityScore, 1.0).toFixed(4));
