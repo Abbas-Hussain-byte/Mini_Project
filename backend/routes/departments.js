@@ -32,4 +32,10 @@ router.post('/:id/assignments', authMiddleware, staffMiddleware, departmentContr
 // PATCH /api/departments/assignments/:id — Update assignment (admin or dept_head)
 router.patch('/assignments/:id', authMiddleware, staffMiddleware, departmentController.updateAssignment);
 
+// POST /api/departments/:id/complaints/:complaintId/workers — Assign workers to a complaint
+router.post('/:id/complaints/:complaintId/workers', authMiddleware, staffMiddleware, departmentController.assignWorkersToComplaint);
+
+// GET /api/departments/:id/complaints/:complaintId/workers — Get workers assigned to a complaint
+router.get('/:id/complaints/:complaintId/workers', departmentController.getComplaintWorkers);
+
 module.exports = router;

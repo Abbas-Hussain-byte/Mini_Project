@@ -320,3 +320,115 @@ exports.getDepartmentPerformance = async (req, res, next) => {
     res.json({ performance });
   } catch (err) { next(err); }
 };
+
+/**
+ * POST /api/departments/:id/complaints/:complaintId/workers — Assign workers to a complaint
+ */
+exports.assignWorkersToComplaint = async (req, res, next) => {
+  try {
+    const { worker_ids } = req.body;
+    const { id: departmentId, complaintId } = req.params;
+
+    if (!worker_ids || !Array.isArray(worker_ids) || worker_ids.length === 0) {
+      return res.status(400).json({ error: 'worker_ids array is required' });
+    }
+
+    // Verify workers belong to this department
+    const { data: validWorkers } = await supabaseAdmin
+      .from('department_workers')
+      .select('id, name, phone, role')
+      .eq('department_id', departmentId)
+      .in('id', worker_ids);
+
+    if (!validWorkers || validWorkers.length === 0) {
+      return res.status(400).json({ error: 'No valid workers found for this department' });
+    }
+
+    // Get or create assignment for this complaint
+    let { data: assignment } = await supabaseAdmin
+      .from('department_assignments')
+      .select('id, workers_assigned, assigned_worker_ids')
+      .eq('complaint_id', complaintId)
+      .eq('department_id', departmentId)
+      .single();
+
+    if (!assignment) {
+      // Create assignment if doesn't exist
+      const { data: newAssignment, error: createErr } = await supabaseAdmin
+        .from('department_assignments')
+        .insert({
+          complaint_id: complaintId,
+          department_id: departmentId,
+          assignment_reason: 'Workers assigned manually',
+          assigned_by: 'staff',
+          workers_assigned: validWorkers.length,
+          assigned_worker_ids: worker_ids,
+          status: 'acknowledged'
+        })
+        .select()
+        .single();
+
+      if (createErr) return res.status(500).json({ error: createErr.message });
+      assignment = newAssignment;
+    } else {
+      // Update existing assignment
+      const { error: updateErr } = await supabaseAdmin
+        .from('department_assignments')
+        .update({
+          workers_assigned: validWorkers.length,
+          assigned_worker_ids: worker_ids
+        })
+        .eq('id', assignment.id);
+
+      if (updateErr) return res.status(500).json({ error: updateErr.message });
+    }
+
+    // Update worker active_assignments count
+    for (const wid of worker_ids) {
+      await supabaseAdmin
+        .from('department_workers')
+        .update({ status: 'on_duty' })
+        .eq('id', wid);
+    }
+
+    // Update complaint status to assigned/in_progress
+    await supabaseAdmin
+      .from('complaints')
+      .update({ status: 'assigned', department_id: departmentId, updated_at: new Date().toISOString() })
+      .eq('id', complaintId);
+
+    res.json({
+      message: `${validWorkers.length} worker(s) assigned to complaint`,
+      workers: validWorkers,
+      assignmentId: assignment.id
+    });
+  } catch (err) { next(err); }
+};
+
+/**
+ * GET /api/departments/:id/complaints/:complaintId/workers — Get workers assigned to a complaint
+ */
+exports.getComplaintWorkers = async (req, res, next) => {
+  try {
+    const { id: departmentId, complaintId } = req.params;
+
+    // Get assignment for this complaint
+    const { data: assignment } = await supabaseAdmin
+      .from('department_assignments')
+      .select('id, workers_assigned, assigned_worker_ids')
+      .eq('complaint_id', complaintId)
+      .eq('department_id', departmentId)
+      .single();
+
+    if (!assignment || !assignment.assigned_worker_ids || assignment.assigned_worker_ids.length === 0) {
+      return res.json({ workers: [], count: 0 });
+    }
+
+    const { data: workers } = await supabaseAdmin
+      .from('department_workers')
+      .select('id, name, phone, role, status')
+      .in('id', assignment.assigned_worker_ids);
+
+    res.json({ workers: workers || [], count: (workers || []).length });
+  } catch (err) { next(err); }
+};

@@ -21,6 +21,7 @@ export default function SubmitComplaint() {
   const [result, setResult] = useState(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [addressSearch, setAddressSearch] = useState('');
+  const [isEmergency, setIsEmergency] = useState(false);
 
   useEffect(() => {
     if (!user) navigate('/login');
@@ -112,9 +113,14 @@ export default function SubmitComplaint() {
       formData.append('longitude', longitude);
       formData.append('address', address);
 
+      if (isEmergency) {
+        formData.append('is_emergency', 'true');
+      }
+
       if (mode === 'image_text') {
         if (!title) throw new Error('Title is required for Image + Text mode.');
-        formData.append('title', title);
+        const finalTitle = isEmergency && !title.startsWith('[EMERGENCY]') ? `[EMERGENCY] ${title}` : title;
+        formData.append('title', finalTitle);
         formData.append('description', description);
       }
 
@@ -211,6 +217,25 @@ export default function SubmitComplaint() {
             <p style={{ color: '#a855f7', fontSize: '0.8rem', margin: 0 }}>📷 <strong>Image Only Mode:</strong> Just upload photos/videos — AI will auto-detect the issue, generate a title, and assign it to the right department.</p>
           </div>
         )}
+
+        {/* 🆘 Emergency Toggle */}
+        <div style={{ padding: '0.75rem 1rem', background: isEmergency ? 'rgba(248, 81, 73, 0.1)' : 'rgba(22, 27, 34, 0.5)', border: `1px solid ${isEmergency ? 'rgba(248, 81, 73, 0.4)' : 'rgba(48, 54, 61, 0.5)'}`, borderRadius: '10px', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', transition: 'all 0.3s' }}
+          onClick={() => setIsEmergency(!isEmergency)}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '1.2rem' }}>{isEmergency ? '🚨' : '🆘'}</span>
+            <div>
+              <p style={{ color: isEmergency ? '#f85149' : '#c9d1d9', fontSize: '0.85rem', margin: 0, fontWeight: 600 }}>
+                Emergency / Life-Threatening Issue
+              </p>
+              <p style={{ color: '#6e7681', fontSize: '0.7rem', margin: '0.1rem 0 0' }}>
+                {isEmergency ? 'This complaint will be marked CRITICAL and prioritized immediately' : 'Toggle if this is a life-threatening situation (exposed wires, collapse, flooding)'}
+              </p>
+            </div>
+          </div>
+          <div style={{ width: '44px', height: '24px', borderRadius: '12px', background: isEmergency ? '#f85149' : 'rgba(48,54,61,0.8)', position: 'relative', transition: 'background 0.3s' }}>
+            <div style={{ width: '18px', height: '18px', borderRadius: '50%', background: '#fff', position: 'absolute', top: '3px', left: isEmergency ? '23px' : '3px', transition: 'left 0.3s' }} />
+          </div>
+        </div>
 
         {error && (
           <div style={{ padding: '0.75rem 1rem', background: 'rgba(248, 81, 73, 0.1)', border: '1px solid rgba(248, 81, 73, 0.3)', borderRadius: '8px', color: '#f85149', fontSize: '0.85rem', marginBottom: '1rem' }}>

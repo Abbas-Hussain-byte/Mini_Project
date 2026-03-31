@@ -88,6 +88,37 @@ const SEVERITY_COST = {
   'low': 5000
 };
 
+// Per-category inherent danger score (0.0 - 1.0)
+// This drives differentiated priority scoring so dangerous issues
+// (electric wires, fallen trees) rank much higher than cosmetic ones (littering)
+const CATEGORY_DANGER_SCORE = {
+  'damaged_electric_wires': 0.95,
+  'fallen_trees': 0.85,
+  'damaged_road': 0.70,
+  'damaged_concrete': 0.65,
+  'pothole': 0.55,
+  'broken_road_sign': 0.50,
+  'sewage': 0.60,
+  'drainage': 0.55,
+  'water_supply': 0.50,
+  'electricity': 0.90,
+  'illegal_parking': 0.30,
+  'vandalism': 0.35,
+  'dead_animal': 0.40,
+  'littering': 0.20,
+  'other': 0.30
+};
+
+// Categories that are life-threatening / emergency (for disaster response)
+const EMERGENCY_CATEGORIES = [
+  'damaged_electric_wires',
+  'fallen_trees',
+  'electricity',
+  'damaged_road',
+  'damaged_concrete',
+  'sewage'
+];
+
 module.exports = {
   CATEGORIES,
   SEVERITY_LEVELS,
@@ -96,5 +127,7 @@ module.exports = {
   YOLO_LABEL_MAP,
   CATEGORY_TO_DEPARTMENT,
   SEVERITY_DEADLINE_HOURS,
-  SEVERITY_COST
+  SEVERITY_COST,
+  CATEGORY_DANGER_SCORE,
+  EMERGENCY_CATEGORIES
 };

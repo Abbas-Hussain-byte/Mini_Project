@@ -4,6 +4,7 @@ import Navbar from './components/layout/Navbar';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import RegisterDeptHeadPage from './pages/RegisterDeptHeadPage';
 import UserDashboard from './pages/UserDashboard';
 import SubmitComplaint from './pages/SubmitComplaint';
 import TrackComplaint from './pages/TrackComplaint';
@@ -31,6 +32,7 @@ export default function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              <Route path="/register-dept-head" element={<RegisterDeptHeadPage />} />
 
               {/* Citizen Routes */}
               <Route path="/my-dashboard" element={

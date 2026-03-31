@@ -9,7 +9,7 @@ const { runClustering } = require('../services/clusteringService');
  */
 exports.createComplaint = async (req, res, next) => {
   try {
-    const { title, description, category, latitude, longitude, address, mode } = req.body;
+    const { title, description, category, latitude, longitude, address, mode, is_emergency } = req.body;
 
     // For image_only mode: title and description are optional (AI fills them)
     const isImageOnly = mode === 'image_only';
@@ -54,6 +54,7 @@ exports.createComplaint = async (req, res, next) => {
     let priorityScore = 0;
     let aiTitle = title || 'Civic Issue Reported';
     let aiDescription = description || '';
+//     const isEmergency = is_emergency === 'true' || is_emergency === true;
     let aiCategory = category || 'other';
 
     try {
@@ -134,7 +135,10 @@ exports.createComplaint = async (req, res, next) => {
       console.warn('⚠️ Duplicate check failed:', dupErr.message);
     }
 
-    // 4. Insert complaint
+    // 4. Override severity for emergencies
+    if (isEmergency) severity = 'critical';
+
+    // 5. Insert complaint
     const { data: complaint, error } = await supabaseAdmin
       .from('complaints')
       .insert({
@@ -149,9 +153,9 @@ exports.createComplaint = async (req, res, next) => {
         image_urls: imageUrls,
         ai_analysis: { ...aiAnalysis, videoUrl },
         ai_detected_labels: detectedLabels,
-        priority_score: priorityScore,
+        priority_score: isEmergency ? Math.max(priorityScore, 0.95) : priorityScore,
         duplicate_of: duplicateOf,
-        status: duplicateOf ? 'duplicate' : 'submitted'
+        status: duplicateOf ? 'duplicate' : (isEmergency ? 'escalated' : 'submitted')
       })
       .select()
       .single();
