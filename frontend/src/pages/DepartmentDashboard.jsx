@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { departmentsAPI, complaintsAPI } from '../services/api';
-import { FiBriefcase, FiUsers, FiClock, FiCheckCircle, FiAlertTriangle, FiTrendingUp, FiPhone, FiMail, FiUser, FiPlus, FiTrash2, FiEdit2, FiMessageSquare  } from 'react-icons/fi';
+import { FiBriefcase, FiUsers, FiClock, FiCheckCircle, FiAlertTriangle, FiTrendingUp, FiPhone, FiMail, FiUser, FiPlus, FiTrash2, FiEdit2, FiMessageSquare, FiUserPlus  } from 'react-icons/fi';
 
 export default function DepartmentDashboard() {
   const { profile } = useAuth();
@@ -15,8 +15,12 @@ export default function DepartmentDashboard() {
   const [showAddWorker, setShowAddWorker] = useState(false);
   const [newWorker, setNewWorker] = useState({ name: '', phone: '', role: 'field_worker' });
   const [editingWorker, setEditingWorker] = useState(null);
-  const [activeSection, setActiveSection] = useState('overview'); // 'overview', 'workers', 'complaints', 'messages'
+  const [activeSection, setActiveSection] = useState('overview');
   const [complaintUpdates, setComplaintUpdates] = useState([]);
+  // Worker assignment per complaint
+  const [assigningComplaint, setAssigningComplaint] = useState(null);
+  const [selectedWorkerIds, setSelectedWorkerIds] = useState([]);
+  const [complaintWorkers, setComplaintWorkers] = useState({});
 
   const isAdmin = profile?.role === 'admin';
   const isDeptHead = profile?.role === 'department_head';
@@ -46,14 +50,23 @@ export default function DepartmentDashboard() {
       setAssignments(assignRes.data.assignments || []);
       setWorkers(workerRes.data.workers || []);
 
-      // Fetch complaints assigned to this dept
       const compRes = await complaintsAPI.getAll({ department_id: dept.id, limit: 30 }).catch(() => ({ data: { complaints: [] } }));
-      setDeptComplaints(compRes.data.complaints || []);
+      const comps = compRes.data.complaints || [];
+      setDeptComplaints(comps);
+
+      // Load assigned workers for each complaint
+      const cwMap = {};
+      await Promise.all(comps.map(async (c) => {
+        try {
+          const res = await departmentsAPI.getComplaintWorkers(dept.id, c.id);
+          cwMap[c.id] = res.data.workers || [];
+        } catch { cwMap[c.id] = []; }
+      }));
+      setComplaintWorkers(cwMap);
     } catch (err) { console.error(err); }
     setLoading(false);
   }, []);
 
-  // Worker CRUD
   const addWorker = async (e) => {
     e.preventDefault();
     if (!selectedDept || !newWorker.name) return;
@@ -80,7 +93,6 @@ export default function DepartmentDashboard() {
     } catch (err) { alert('Remove failed'); }
   };
 
-  // Complaint status management (for dept heads)
   const handleComplaintStatus = async (id, status) => {
     try {
       await complaintsAPI.update(id, { status });
@@ -93,6 +105,23 @@ export default function DepartmentDashboard() {
       const res = await complaintsAPI.getById(complaintId);
       setComplaintUpdates(res.data.complaint?.complaint_updates || []);
     } catch (err) { console.error(err); }
+  };
+
+  // Worker assignment per complaint
+  const handleAssignWorkers = async (complaintId) => {
+    if (selectedWorkerIds.length === 0) return alert('Select at least one worker');
+    try {
+      await departmentsAPI.assignWorkers(selectedDept, complaintId, { worker_ids: selectedWorkerIds });
+      setAssigningComplaint(null);
+      setSelectedWorkerIds([]);
+      selectDept({ id: selectedDept });
+    } catch (err) { alert(err.response?.data?.error || 'Assignment failed'); }
+  };
+
+  const toggleWorkerSelection = (workerId) => {
+    setSelectedWorkerIds(prev =>
+      prev.includes(workerId) ? prev.filter(id => id !== workerId) : [...prev, workerId]
+    );
   };
 
   const cardStyle = { background: 'rgba(22, 27, 34, 0.8)', borderRadius: '12px', padding: '1.25rem', border: '1px solid rgba(48, 54, 61, 0.5)' };
@@ -135,7 +164,6 @@ export default function DepartmentDashboard() {
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                 <h2 style={{ color: '#f0f6fc', fontSize: '1.2rem', margin: 0 }}>{deptDetail.name}</h2>
-                {/* Section Tabs */}
                 <div style={{ display: 'flex', gap: '0.25rem', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '3px' }}>
                   {[
                     { id: 'overview', label: 'Overview', icon: <FiBriefcase size={13} /> },
@@ -152,7 +180,7 @@ export default function DepartmentDashboard() {
                 </div>
               </div>
 
-              {/* ===== OVERVIEW SECTION ===== */}
+              {/* OVERVIEW */}
               {activeSection === 'overview' && (
                 <>
                   {deptDetail.head_name && (
@@ -183,6 +211,42 @@ export default function DepartmentDashboard() {
                     ))}
                   </div>
 
+                  {/* Workers — visible in overview */}
+                  <div style={{ ...cardStyle, marginBottom: '1rem' }}>
+                    <h3 style={{ color: '#06b6d4', margin: '0 0 0.5rem', fontSize: '0.9rem' }}>👷 Workers ({workers.length})</h3>
+                    {workers.length > 0 ? (
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.4rem' }}>
+                        {workers.map(w => (
+                          <div key={w.id} style={{ padding: '0.4rem 0.6rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px' }}>
+                            <p style={{ color: '#f0f6fc', fontSize: '0.8rem', margin: '0 0 0.1rem', fontWeight: 500 }}>{w.name}</p>
+                            <span style={{ fontSize: '0.65rem', color: '#8b949e' }}>{w.role?.replace(/_/g, ' ')} • {w.phone || 'N/A'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : <p style={{ color: '#6e7681', fontSize: '0.8rem' }}>No workers yet</p>}
+                  </div>
+
+                  {/* Complaints — visible in overview */}
+                  <div style={{ ...cardStyle, marginBottom: '1rem' }}>
+                    <h3 style={{ color: '#a855f7', margin: '0 0 0.5rem', fontSize: '0.9rem' }}>📋 Complaints ({deptComplaints.length})</h3>
+                    {deptComplaints.length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                        {deptComplaints.slice(0, 8).map(c => (
+                          <div key={c.id} style={{ padding: '0.4rem 0.6rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div>
+                              <p style={{ color: '#f0f6fc', fontSize: '0.8rem', margin: '0 0 0.1rem' }}>{c.title}</p>
+                              <div style={{ display: 'flex', gap: '0.3rem' }}>
+                                <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.3rem', borderRadius: '3px', background: statusColor(c.status) + '15', color: statusColor(c.status) }}>{c.status?.replace(/_/g, ' ')}</span>
+                                <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.3rem', borderRadius: '3px', background: 'rgba(139,148,158,0.1)', color: '#8b949e' }}>{c.severity}</span>
+                                {(complaintWorkers[c.id] || []).length > 0 && <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.3rem', borderRadius: '3px', background: 'rgba(46,160,67,0.1)', color: '#2ea043' }}>{(complaintWorkers[c.id] || []).length} workers</span>}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : <p style={{ color: '#6e7681', fontSize: '0.8rem' }}>No complaints assigned</p>}
+                  </div>
+
                   <h3 style={{ color: '#c9d1d9', fontSize: '0.9rem', marginBottom: '0.5rem' }}>Recent Assignments</h3>
                   {assignments.slice(0, 5).map(a => (
                     <div key={a.id} style={{ ...cardStyle, marginBottom: '0.5rem', borderLeft: `3px solid ${statusColor(a.status)}`, padding: '0.75rem 1rem' }}>
@@ -211,12 +275,12 @@ export default function DepartmentDashboard() {
                 </>
               )}
 
-              {/* ===== WORKERS SECTION ===== */}
+              {/* WORKERS SECTION */}
               {activeSection === 'workers' && (
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                     <h3 style={{ color: '#c9d1d9', fontSize: '0.9rem', margin: 0 }}>Department Workers ({workers.length})</h3>
-                    {isAdmin && (
+                    {(isAdmin || isDeptHead) && (
                       <button onClick={() => setShowAddWorker(!showAddWorker)}
                         style={{ padding: '0.4rem 0.75rem', borderRadius: '6px', border: 'none', background: 'rgba(46,160,67,0.2)', color: '#2ea043', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                         <FiPlus size={14} /> Add Worker
@@ -231,8 +295,7 @@ export default function DepartmentDashboard() {
                         <input placeholder="Phone number" value={newWorker.phone} onChange={e => setNewWorker(w => ({ ...w, phone: e.target.value }))} style={inputStyle} />
                       </div>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <select value={newWorker.role} onChange={e => setNewWorker(w => ({ ...w, role: e.target.value }))}
-                          style={{ ...inputStyle, flex: 1 }}>
+                        <select value={newWorker.role} onChange={e => setNewWorker(w => ({ ...w, role: e.target.value }))} style={{ ...inputStyle, flex: 1 }}>
                           <option value="field_worker">Field Worker</option>
                           <option value="supervisor">Supervisor</option>
                           <option value="inspector">Inspector</option>
@@ -261,7 +324,7 @@ export default function DepartmentDashboard() {
                           <option value="on_duty">On Duty</option>
                           <option value="on_leave">On Leave</option>
                         </select>
-                        {isAdmin && (
+                        {(isAdmin || isDeptHead) && (
                           <button onClick={() => deleteWorker(w.id)}
                             style={{ padding: '0.3rem', borderRadius: '4px', border: 'none', background: 'rgba(248,81,73,0.1)', color: '#f85149', cursor: 'pointer' }}>
                             <FiTrash2 size={13} />
@@ -270,18 +333,17 @@ export default function DepartmentDashboard() {
                       </div>
                     </div>
                   ))}
-
                   {workers.length === 0 && <p style={{ color: '#8b949e', textAlign: 'center', padding: '1.5rem' }}>No workers in this department yet.</p>}
                 </div>
               )}
 
-              {/* ===== COMPLAINTS SECTION (Dept Head can manage) ===== */}
+              {/* COMPLAINTS SECTION (with Worker Assignment) */}
               {activeSection === 'complaints' && (
                 <div>
                   <h3 style={{ color: '#c9d1d9', fontSize: '0.9rem', marginBottom: '0.75rem' }}>Assigned Complaints ({deptComplaints.length})</h3>
 
                   {deptComplaints.map(c => (
-                    <div key={c.id} style={{ ...cardStyle, marginBottom: '0.5rem', borderLeft: `3px solid ${statusColor(c.status)}` }}>
+                    <div key={c.id} style={{ ...cardStyle, marginBottom: '0.75rem', borderLeft: `3px solid ${statusColor(c.status)}` }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
                         <div style={{ flex: 1 }}>
                           <p style={{ color: '#f0f6fc', fontSize: '0.9rem', margin: '0 0 0.2rem', fontWeight: 500 }}>{c.title}</p>
@@ -290,27 +352,87 @@ export default function DepartmentDashboard() {
                             <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: statusColor(c.status) + '20', color: statusColor(c.status) }}>{c.status?.replace(/_/g, ' ')}</span>
                             <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: 'rgba(139,148,158,0.1)', color: '#8b949e' }}>{c.severity}</span>
                             <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: 'rgba(139,148,158,0.1)', color: '#8b949e' }}>{c.category?.replace(/_/g, ' ')}</span>
+                            {c.priority_score > 0 && <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: 'rgba(168,85,247,0.1)', color: '#a855f7' }}>P: {c.priority_score?.toFixed(3)}</span>}
                           </div>
                         </div>
 
-                        {/* Status management for dept heads */}
-                        {(isDeptHead || isAdmin) && !['resolved', 'rejected', 'duplicate'].includes(c.status) && (
-                          <select onChange={e => { if (e.target.value) handleComplaintStatus(c.id, e.target.value); e.target.value = ''; }}
-                            defaultValue=""
-                            style={{ padding: '0.35rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(48,54,61,0.8)', background: 'rgba(0,0,0,0.3)', color: '#c9d1d9', fontSize: '0.75rem' }}>
-                            <option value="" disabled>Update status...</option>
-                            <option value="under_review">Under Review</option>
-                            <option value="assigned">Assigned</option>
-                            <option value="in_progress">In Progress</option>
-                            <option value="pending_verification">Submit for Verification</option>
-                          </select>
-                        )}
+                        <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                          {(isDeptHead || isAdmin) && !['resolved', 'rejected', 'duplicate'].includes(c.status) && (
+                            <select onChange={e => { if (e.target.value) handleComplaintStatus(c.id, e.target.value); e.target.value = ''; }}
+                              defaultValue=""
+                              style={{ padding: '0.35rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(48,54,61,0.8)', background: 'rgba(0,0,0,0.3)', color: '#c9d1d9', fontSize: '0.75rem' }}>
+                              <option value="" disabled>Update status...</option>
+                              <option value="under_review">Under Review</option>
+                              <option value="assigned">Assigned</option>
+                              <option value="in_progress">In Progress</option>
+                              <option value="pending_verification">Submit for Verification</option>
+                            </select>
+                          )}
+
+                          {(isDeptHead || isAdmin) && (
+                            <button onClick={() => { setAssigningComplaint(assigningComplaint === c.id ? null : c.id); setSelectedWorkerIds((complaintWorkers[c.id] || []).map(w => w.id)); }}
+                              style={{ padding: '0.35rem 0.6rem', borderRadius: '6px', border: 'none', background: 'rgba(46,160,67,0.15)', color: '#2ea043', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                              <FiUserPlus size={12} /> Assign Workers
+                            </button>
+                          )}
+
+                          <button onClick={() => loadMessages(c.id)} style={{ padding: '0.25rem 0.5rem', borderRadius: '4px', border: 'none', background: 'rgba(168,85,247,0.1)', color: '#a855f7', cursor: 'pointer', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                            <FiMessageSquare size={11} /> Messages
+                          </button>
+                        </div>
                       </div>
 
-                      {/* Show admin messages if any */}
-                      <button onClick={() => loadMessages(c.id)} style={{ marginTop: '0.5rem', padding: '0.25rem 0.5rem', borderRadius: '4px', border: 'none', background: 'rgba(168,85,247,0.1)', color: '#a855f7', cursor: 'pointer', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                        <FiMessageSquare size={11} /> View Messages
-                      </button>
+                      {/* Assigned Workers Display */}
+                      {(complaintWorkers[c.id] || []).length > 0 && (
+                        <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'rgba(46,160,67,0.05)', borderRadius: '6px', border: '1px solid rgba(46,160,67,0.15)' }}>
+                          <p style={{ color: '#2ea043', fontSize: '0.7rem', margin: '0 0 0.3rem', fontWeight: 600 }}>👷 Assigned Workers ({(complaintWorkers[c.id] || []).length})</p>
+                          <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                            {(complaintWorkers[c.id] || []).map(w => (
+                              <span key={w.id} style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(6,182,212,0.1)', color: '#06b6d4', border: '1px solid rgba(6,182,212,0.2)' }}>
+                                {w.name} ({w.role?.replace(/_/g, ' ')}) • {w.phone || 'N/A'}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Worker Assignment Panel */}
+                      {assigningComplaint === c.id && (
+                        <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(46,160,67,0.2)' }}>
+                          <p style={{ color: '#2ea043', fontSize: '0.8rem', margin: '0 0 0.5rem', fontWeight: 600 }}>Select workers to assign:</p>
+                          {workers.length > 0 ? (
+                            <>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.5rem', maxHeight: '200px', overflowY: 'auto' }}>
+                                {workers.map(w => (
+                                  <label key={w.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.5rem', borderRadius: '6px', cursor: 'pointer',
+                                    background: selectedWorkerIds.includes(w.id) ? 'rgba(46,160,67,0.1)' : 'transparent',
+                                    border: `1px solid ${selectedWorkerIds.includes(w.id) ? 'rgba(46,160,67,0.3)' : 'rgba(48,54,61,0.3)'}` }}>
+                                    <input type="checkbox" checked={selectedWorkerIds.includes(w.id)} onChange={() => toggleWorkerSelection(w.id)} style={{ accentColor: '#2ea043' }} />
+                                    <span style={{ color: '#f0f6fc', fontSize: '0.85rem' }}>{w.name}</span>
+                                    <span style={{ color: '#8b949e', fontSize: '0.7rem' }}>{w.role?.replace(/_/g, ' ')}</span>
+                                    <span style={{ color: '#6e7681', fontSize: '0.7rem' }}>{w.phone || ''}</span>
+                                    <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.3rem', borderRadius: '3px', marginLeft: 'auto',
+                                      background: w.status === 'available' ? 'rgba(46,160,67,0.15)' : w.status === 'on_duty' ? 'rgba(168,85,247,0.15)' : 'rgba(245,158,11,0.15)',
+                                      color: w.status === 'available' ? '#2ea043' : w.status === 'on_duty' ? '#a855f7' : '#f59e0b' }}>
+                                      {w.status || 'available'}
+                                    </span>
+                                  </label>
+                                ))}
+                              </div>
+                              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <button onClick={() => handleAssignWorkers(c.id)}
+                                  style={{ padding: '0.4rem 0.75rem', borderRadius: '6px', border: 'none', background: '#2ea043', color: '#fff', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
+                                  Assign {selectedWorkerIds.length} Worker(s)
+                                </button>
+                                <button onClick={() => { setAssigningComplaint(null); setSelectedWorkerIds([]); }}
+                                  style={{ padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid rgba(48,54,61,0.8)', background: 'transparent', color: '#8b949e', cursor: 'pointer', fontSize: '0.8rem' }}>
+                                  Cancel
+                                </button>
+                              </div>
+                            </>
+                          ) : <p style={{ color: '#6e7681', fontSize: '0.8rem' }}>No workers available. Add workers first.</p>}
+                        </div>
+                      )}
                     </div>
                   ))}
 

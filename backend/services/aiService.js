@@ -1,6 +1,6 @@
 const axios = require('axios');
 const FormData = require('form-data');
-const { YOLO_LABEL_MAP } = require('../utils/constants');
+const { YOLO_LABEL_MAP, CATEGORY_DANGER_SCORE } = require('../utils/constants');
 
 const ML_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
 
@@ -164,15 +164,31 @@ function calculatePriority(severity, analysis) {
   const textScore = textSev / 4;
   const recencyScore = 1.0;
 
+  // Category-based danger score — the KEY differentiator
+  const category = analysis.category || analysis.textCategory || 'other';
+  const categoryDanger = CATEGORY_DANGER_SCORE[category] || 0.30;
+
+  // Detection confidence (higher confidence = higher priority)
+  const confidence = analysis.confidence || analysis.textConfidence || 0.5;
+
+  // New formula: category danger is weighted highest (35%)
+  // This ensures electric wires (0.95) gets very different score from littering (0.20)
   const priorityScore = (
+//     0.35 * categoryDanger +
+//     0.25 * hazardScore +
+//     0.20 * textScore +
+//     0.10 * recencyScore +
+//     0.10 * confidence
+    
     0.35 * hazardScore +
     0.25 * textScore +
     0.15 * (analysis.confidence || 0.5) +
     0.15 * recencyScore +
     0.10 * 0.5
+
   );
 
-  return parseFloat(priorityScore.toFixed(3));
+  return parseFloat(Math.min(priorityScore, 1.0).toFixed(4));
 }
 
 module.exports = { analyzeComplaint };

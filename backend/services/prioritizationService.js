@@ -1,5 +1,5 @@
 const { supabaseAdmin } = require('../models/supabaseClient');
-const { SEVERITY_COST } = require('../utils/constants');
+const { SEVERITY_COST, CATEGORY_DANGER_SCORE } = require('../utils/constants');
 
 /**
  * Prioritization Service
@@ -21,11 +21,11 @@ const { SEVERITY_COST } = require('../utils/constants');
  */
 
 const DEFAULT_WEIGHTS = {
-  hazardSeverity: 0.30,
-  textSeverity: 0.25,
+  categoryDanger: 0.30,
+  hazardSeverity: 0.25,
   complaintDensity: 0.20,
   recency: 0.15,
-  populationImpact: 0.10
+  textSeverity: 0.10
 };
 
 /**
@@ -36,7 +36,7 @@ async function recalculatePriorities(customWeights) {
 
   const { data: complaints } = await supabaseAdmin
     .from('complaints')
-    .select('id, severity, ai_analysis, cluster_id, created_at')
+    .select('id, severity, category, ai_analysis, cluster_id, created_at')
     .in('status', ['submitted', 'under_review', 'assigned', 'in_progress', 'pending_verification']);
 
   if (!complaints || complaints.length === 0) return { updated: 0 };
@@ -68,20 +68,24 @@ async function recalculatePriorities(customWeights) {
       ? (severityMap[c.ai_analysis.textSeverity] || 0.5)
       : hazardScore;
 
+    // Category-based danger score — the KEY differentiator
+    const category = c.category || c.ai_analysis?.textCategory || 'other';
+    const categoryDanger = CATEGORY_DANGER_SCORE[category] || 0.30;
+
     const densityScore = c.cluster_id && clusterMap[c.cluster_id]
       ? clusterMap[c.cluster_id] / maxClusterSize
       : 0.1;
 
     const ageMs = now - new Date(c.created_at).getTime();
     const recencyScore = Math.max(0, 1 - (ageMs / maxAgeMs));
-    const populationScore = 0.5;
 
+    // New formula: category danger replaces populationImpact
     let priorityScore = (
+      weights.categoryDanger * categoryDanger +
       weights.hazardSeverity * hazardScore +
-      weights.textSeverity * textScore +
       weights.complaintDensity * densityScore +
       weights.recency * recencyScore +
-      weights.populationImpact * populationScore
+      weights.textSeverity * textScore
     );
 
     // DUPLICATE BOOST: +10% per duplicate pointing to this complaint

@@ -124,3 +124,35 @@ exports.sendMessage = async (req, res, next) => {
     res.json({ message: 'Message sent to department', update: data });
   } catch (err) { next(err); }
 };
+
+/**
+ * GET /api/admin/disaster-alerts — Get all escalated/at-risk complaints
+ */
+exports.getDisasterAlerts = async (req, res, next) => {
+  try {
+    const { checkAndEscalate, getDisasterAlerts } = require('../services/disasterResponseService');
+
+    // First run auto-escalation check
+    const escalationResult = await checkAndEscalate();
+
+    // Then get all alerts
+    const alerts = await getDisasterAlerts();
+
+    res.json({
+      ...alerts,
+      autoEscalated: escalationResult.count,
+      autoEscalatedDetails: escalationResult.escalated
+    });
+  } catch (err) { next(err); }
+};
+
+/**
+ * POST /api/admin/escalate/:id — Manually escalate a complaint
+ */
+exports.escalateComplaint = async (req, res, next) => {
+  try {
+    const { escalateComplaint } = require('../services/disasterResponseService');
+    const result = await escalateComplaint(req.params.id, req.user.id);
+    res.json(result);
+  } catch (err) { next(err); }
+};
