@@ -107,3 +107,19 @@ body {
   width: 100%;
   max-height: 300px;
 }
+
+/* Global dropdown fix — dark background for all select/option elements */
+select {
+  background-color: rgba(0, 0, 0, 0.3);
+  color: #c9d1d9;
+}
+select option {
+  background-color: #1a1a2e;
+  color: #e0e0e0;
+}
+
+/* Loading spinner animation */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

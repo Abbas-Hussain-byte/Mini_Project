@@ -8,7 +8,7 @@ export default function RegisterPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    fullName: '', phone: '', password: '', confirmPassword: ''
+    fullName: '', email: '', phone: '', password: '', confirmPassword: ''
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -32,18 +32,14 @@ export default function RegisterPage() {
     if (formData.password.length < 6) {
       return setError('Password must be at least 6 characters');
     }
-    if (!formData.phone || formData.phone.length < 10) {
-      return setError('Valid phone number is required');
+    if (!formData.email || !formData.email.includes('@')) {
+      return setError('Valid email address is required');
     }
 
     setLoading(true);
     try {
-      // Generate a proxy email from phone number for Supabase auth
-      const cleanPhone = formData.phone.replace(/[^0-9]/g, '');
-      const proxyEmail = `citizen_${cleanPhone}@civicpulse.local`;
-
       const { data, error: authError } = await supabase.auth.signUp({
-        email: proxyEmail,
+        email: formData.email,
         password: formData.password,
         options: {
           data: {
@@ -85,7 +81,7 @@ export default function RegisterPage() {
           </div>
           <h2 style={{ color: '#f0f6fc', margin: '0 0 0.5rem' }}>Account Created!</h2>
           <p style={{ color: '#8b949e', marginBottom: '1.5rem' }}>
-            You can now sign in using your phone number.
+            You can now sign in using your email address.
           </p>
           <Link to="/login" style={{
             display: 'inline-block', padding: '0.85rem 2rem', borderRadius: '10px', border: 'none',
@@ -106,7 +102,7 @@ export default function RegisterPage() {
             <FiUserPlus color="#fff" />
           </div>
           <h2 style={{ color: '#f0f6fc', margin: '0 0 0.5rem', fontSize: '1.5rem' }}>Citizen Registration</h2>
-          <p style={{ color: '#8b949e', fontSize: '0.85rem' }}>Sign up with your phone number to report civic issues</p>
+          <p style={{ color: '#8b949e', fontSize: '0.85rem' }}>Sign up with your email to report civic issues</p>
         </div>
 
         {error && (
@@ -126,17 +122,28 @@ export default function RegisterPage() {
             </div>
           </div>
 
+          {/* Email Address */}
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={{ display: 'block', color: '#c9d1d9', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 500 }}>
+              Email Address <span style={{ color: '#f85149' }}>*</span>
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: '1px solid rgba(48, 54, 61, 0.8)', padding: '0 1rem' }}>
+              <FiMail color="#8b949e" />
+              <input type="email" placeholder="Enter your email (e.g. someone@gmail.com)" value={formData.email} onChange={handleChange('email')} required
+                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f0f6fc', padding: '0.85rem 0.75rem', fontSize: '0.95rem' }} />
+            </div>
+          </div>
+
           {/* Phone Number */}
           <div style={{ marginBottom: '1rem' }}>
             <label style={{ display: 'block', color: '#c9d1d9', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 500 }}>
-              Phone Number <span style={{ color: '#f85149' }}>*</span>
+              Phone Number
             </label>
             <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: '1px solid rgba(48, 54, 61, 0.8)', padding: '0 1rem' }}>
               <FiPhone color="#8b949e" />
-              <input type="tel" placeholder="Enter your phone number" value={formData.phone} onChange={handleChange('phone')} required
+              <input type="tel" placeholder="Enter your phone number (optional)" value={formData.phone} onChange={handleChange('phone')}
                 style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f0f6fc', padding: '0.85rem 0.75rem', fontSize: '0.95rem' }} />
             </div>
-            <p style={{ color: '#6e7681', fontSize: '0.75rem', margin: '0.25rem 0 0 0.5rem' }}>Used for login — no email needed</p>
           </div>
 
           {/* Password */}

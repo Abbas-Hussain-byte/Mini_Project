@@ -1,6 +1,7 @@
 const { supabaseAdmin } = require('../models/supabaseClient');
 const { analyzeComplaint } = require('../services/aiService');
 const { routeToDepartment } = require('../services/departmentRoutingService');
+const { runClustering } = require('../services/clusteringService');
 
 /**
  * POST /api/complaints — Create a new complaint
@@ -53,7 +54,8 @@ exports.createComplaint = async (req, res, next) => {
     let priorityScore = 0;
     let aiTitle = title || 'Civic Issue Reported';
     let aiDescription = description || '';
-    const isEmergency = is_emergency === 'true' || is_emergency === true;
+//     const isEmergency = is_emergency === 'true' || is_emergency === true;
+    let aiCategory = category || 'other';
 
     try {
       const analysisResult = await analyzeComplaint({
@@ -70,6 +72,11 @@ exports.createComplaint = async (req, res, next) => {
       severity = analysisResult.severity || severity;
       priorityScore = analysisResult.priorityScore || 0;
 
+      // Use AI-determined category if the user didn't provide one
+      if (!category && analysisResult.category && analysisResult.category !== 'other') {
+        aiCategory = analysisResult.category;
+      }
+
       // For image_only mode: use AI-generated title and description
       if (isImageOnly) {
         aiTitle = analysisResult.title || aiTitle;
@@ -85,11 +92,11 @@ exports.createComplaint = async (req, res, next) => {
     try {
       const latDelta = 0.005; // ~500m
       const lngDelta = 0.005;
-      const cat = category || (detectedLabels[0] || 'other');
+      const cat = aiCategory;
 
       const { data: nearbyComplaints } = await supabaseAdmin
         .from('complaints')
-        .select('id, title, priority_score, created_at')
+        .select('id, title, priority_score, severity, created_at')
         .eq('category', cat)
         .gte('latitude', parseFloat(latitude) - latDelta)
         .lte('latitude', parseFloat(latitude) + latDelta)
@@ -110,11 +117,18 @@ exports.createComplaint = async (req, res, next) => {
           message: 'A similar complaint already exists nearby. Your report has been linked and the original priority has been boosted!'
         };
 
-        // Boost original complaint priority (+10%)
+        // Boost original complaint priority (+10%) and upgrade severity if new complaint is more severe
+        const SEVER_RANK = { 'low': 1, 'medium': 2, 'high': 3, 'critical': 4 };
         const boostedPriority = Math.min((original.priority_score || 0.5) * 1.1, 1.0);
+        const originalSevRank = SEVER_RANK[original.severity] || 2;
+        const newSevRank = SEVER_RANK[severity] || 2;
+        const updateObj = { priority_score: parseFloat(boostedPriority.toFixed(4)) };
+        if (newSevRank > originalSevRank) {
+          updateObj.severity = severity;
+        }
         await supabaseAdmin
           .from('complaints')
-          .update({ priority_score: parseFloat(boostedPriority.toFixed(4)) })
+          .update(updateObj)
           .eq('id', original.id);
       }
     } catch (dupErr) {
@@ -131,7 +145,7 @@ exports.createComplaint = async (req, res, next) => {
         user_id: req.user.id,
         title: isImageOnly ? aiTitle : title,
         description: isImageOnly ? aiDescription : (description || ''),
-        category: category || (detectedLabels[0] || 'other'),
+        category: aiCategory,
         latitude: parseFloat(latitude),
         longitude: parseFloat(longitude),
         address,
@@ -156,6 +170,9 @@ exports.createComplaint = async (req, res, next) => {
         console.warn('⚠️ Department routing failed:', deptErr.message);
       }
     }
+
+    // 6. Trigger clustering update (async, non-blocking)
+    runClustering().catch(err => console.warn('⚠️ Clustering update failed:', err.message));
 
     // 6. Fetch the updated complaint with department info
     const { data: fullComplaint } = await supabaseAdmin
