@@ -103,18 +103,38 @@ LABEL_TITLES = {
 
 
 def load_yolo():
-    """Load YOLOv8n model"""
+    """Load YOLOv8n model (fine-tuned > HF download > pretrained)"""
     if models['yolo'] is None:
         print("🔄 Loading YOLOv8n model...")
         from ultralytics import YOLO
-        # Check for fine-tuned model first, then fall back to pretrained
+        # Check for fine-tuned model first
         finetuned_path = os.path.join(os.path.dirname(__file__), 'models', 'yolo-urban', 'best.pt')
         if os.path.exists(finetuned_path):
             print(f"   Using fine-tuned model: {finetuned_path}")
             models['yolo'] = YOLO(finetuned_path)
         else:
-            print("   Using pretrained YOLOv8n (fine-tune for better accuracy)")
-            models['yolo'] = YOLO('yolov8n.pt')
+            # Try to auto-download from HuggingFace
+            try:
+                from huggingface_hub import hf_hub_download
+                print("   Fine-tuned model not found. Downloading from HuggingFace...")
+                target_dir = os.path.join(os.path.dirname(__file__), 'models', 'yolo-urban')
+                os.makedirs(target_dir, exist_ok=True)
+                downloaded = hf_hub_download(
+                    repo_id="AkinduH/Urban-Issues-Detection",
+                    filename="best.pt",
+                    repo_type="space",
+                    local_dir=target_dir,
+                    local_dir_use_symlinks=False
+                )
+                dl_path = os.path.join(target_dir, 'best.pt')
+                if downloaded != dl_path and os.path.exists(downloaded):
+                    import shutil
+                    shutil.move(downloaded, dl_path)
+                print(f"   ✅ Downloaded fine-tuned model to {dl_path}")
+                models['yolo'] = YOLO(dl_path)
+            except Exception as hf_err:
+                print(f"   ⚠️ HF download failed ({hf_err}), using pretrained YOLOv8n")
+                models['yolo'] = YOLO('yolov8n.pt')
         print("✅ YOLOv8n loaded")
     return models['yolo']
 

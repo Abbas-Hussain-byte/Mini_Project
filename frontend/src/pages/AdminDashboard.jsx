@@ -9,6 +9,7 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineEleme
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: <FiBarChart2 /> },
+  { id: 'disaster', label: '🚨 Disaster', icon: <FiAlertTriangle /> },
   { id: 'complaints', label: 'Complaints', icon: <FiAlertTriangle /> },
   { id: 'departments', label: 'Departments', icon: <FiBriefcase /> },
   { id: 'budget', label: 'Budget', icon: <FiDollarSign /> },
@@ -41,6 +42,9 @@ export default function AdminDashboard() {
   const [selectedComplaintMsg, setSelectedComplaintMsg] = useState(null);
   const [complaintUpdates, setComplaintUpdates] = useState({});
   const [trends, setTrends] = useState([]);
+  const [disasterAlerts, setDisasterAlerts] = useState(null);
+  const [deptWorkers, setDeptWorkers] = useState({});
+  const [deptComplaints, setDeptComplaints] = useState({});
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -60,13 +64,30 @@ export default function AdminDashboard() {
         if (filter.severity) params.severity = filter.severity;
         const res = await complaintsAPI.getAll(params);
         setComplaints(res.data.complaints || []);
+      } else if (activeTab === 'disaster') {
+        const res = await adminAPI.getDisasterAlerts().catch(() => ({ data: {} }));
+        setDisasterAlerts(res.data);
       } else if (activeTab === 'departments') {
         const [dp, perf] = await Promise.all([
           departmentsAPI.getAll(),
           departmentsAPI.getPerformance().catch(() => ({ data: { performance: [] } }))
         ]);
-        setDepartments(dp.data.departments || dp.data || []);
+        const deptList = dp.data.departments || dp.data || [];
+        setDepartments(deptList);
         setDeptPerformance(perf.data.performance || []);
+        // Fetch workers and complaints for each department (expanded view)
+        const wMap = {};
+        const cMap = {};
+        await Promise.all(deptList.map(async (dept) => {
+          const [wRes, cRes] = await Promise.all([
+            departmentsAPI.getWorkers(dept.id).catch(() => ({ data: { workers: [] } })),
+            complaintsAPI.getAll({ department_id: dept.id, limit: 20 }).catch(() => ({ data: { complaints: [] } }))
+          ]);
+          wMap[dept.id] = wRes.data.workers || [];
+          cMap[dept.id] = cRes.data.complaints || [];
+        }));
+        setDeptWorkers(wMap);
+        setDeptComplaints(cMap);
       } else if (activeTab === 'users') {
         const res = await adminAPI.getUsers();
         setUsers(res.data.users || []);
@@ -290,6 +311,85 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* ===== DISASTER RESPONSE TAB ===== */}
+        {activeTab === 'disaster' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 style={{ color: '#f85149', margin: 0, fontSize: '1.2rem' }}>🚨 Disaster Response Center</h2>
+              <button onClick={loadData} style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: 'rgba(248,81,73,0.2)', color: '#f85149', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.85rem' }}>
+                <FiRefreshCw size={14} /> Refresh Alerts
+              </button>
+            </div>
+
+            {disasterAlerts?.autoEscalated > 0 && (
+              <div style={{ ...cardStyle, background: 'rgba(248,81,73,0.08)', border: '1px solid rgba(248,81,73,0.3)', marginBottom: '1rem' }}>
+                <p style={{ color: '#f85149', fontWeight: 700, margin: '0 0 0.25rem' }}>⚡ {disasterAlerts.autoEscalated} complaint(s) auto-escalated just now!</p>
+                <p style={{ color: '#8b949e', fontSize: '0.8rem', margin: 0 }}>Critical/high complaints past their deadline were automatically escalated.</p>
+              </div>
+            )}
+
+            {/* Escalated Complaints */}
+            <h3 style={{ color: '#f85149', fontSize: '0.95rem', margin: '1rem 0 0.5rem' }}>🔴 Escalated Complaints ({disasterAlerts?.escalatedComplaints?.length || 0})</h3>
+            {(disasterAlerts?.escalatedComplaints || []).map(c => (
+              <div key={c.id} style={{ ...cardStyle, marginBottom: '0.75rem', borderLeft: '3px solid #f85149' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div>
+                    <h4 style={{ color: '#f0f6fc', margin: '0 0 0.25rem', fontSize: '1rem' }}>{c.title}</h4>
+                    <p style={{ color: '#8b949e', fontSize: '0.8rem', margin: '0 0 0.5rem' }}>{c.description?.slice(0, 150)}</p>
+                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(248,81,73,0.2)', color: '#f85149' }}>ESCALATED</span>
+                      <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: (SEV_COLORS[c.severity] || '#8b949e') + '20', color: SEV_COLORS[c.severity] }}>{c.severity}</span>
+                      <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(139,148,158,0.1)', color: '#8b949e' }}>{c.category?.replace(/_/g, ' ')}</span>
+                      {c.departments?.name && <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(6,182,212,0.1)', color: '#06b6d4' }}>{c.departments.name}</span>}
+                      <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}>Priority: {c.priority_score?.toFixed(3)}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    <select onChange={(e) => { if (e.target.value) handleStatusUpdate(c.id, e.target.value); e.target.value = ''; }}
+                      defaultValue="" style={{ padding: '0.4rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(48,54,61,0.8)', background: 'rgba(0,0,0,0.3)', color: '#c9d1d9', fontSize: '0.75rem', cursor: 'pointer' }}>
+                      <option value="" disabled>Change status...</option>
+                      <option value="assigned">Assign Dept</option>
+                      <option value="in_progress">In Progress</option>
+                      <option value="resolved">Resolve</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {(disasterAlerts?.escalatedComplaints || []).length === 0 && (
+              <div style={{ ...cardStyle, textAlign: 'center' }}>
+                <p style={{ color: '#2ea043', fontSize: '1rem' }}>✅ No escalated complaints. All clear!</p>
+              </div>
+            )}
+
+            {/* At-Risk Complaints */}
+            <h3 style={{ color: '#f59e0b', fontSize: '0.95rem', margin: '1.5rem 0 0.5rem' }}>⚠️ At-Risk Complaints ({disasterAlerts?.atRiskComplaints?.length || 0})</h3>
+            <p style={{ color: '#6e7681', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Critical/high complaints past deadline — may auto-escalate soon.</p>
+            {(disasterAlerts?.atRiskComplaints || []).map((c, i) => (
+              <div key={i} style={{ ...cardStyle, marginBottom: '0.75rem', borderLeft: '3px solid #f59e0b' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div>
+                    <h4 style={{ color: '#f0f6fc', margin: '0 0 0.25rem', fontSize: '0.95rem' }}>{c.title}</h4>
+                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: (SEV_COLORS[c.severity] || '#8b949e') + '20', color: SEV_COLORS[c.severity] }}>{c.severity}</span>
+                      <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}>{c.hoursOverdue}hrs overdue</span>
+                    </div>
+                  </div>
+                  <button onClick={async () => { await adminAPI.escalateComplaint(c.id); loadData(); }}
+                    style={{ padding: '0.4rem 0.75rem', borderRadius: '6px', border: 'none', background: 'rgba(248,81,73,0.2)', color: '#f85149', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
+                    🚨 Escalate Now
+                  </button>
+                </div>
+              </div>
+            ))}
+            {(disasterAlerts?.atRiskComplaints || []).length === 0 && (
+              <div style={{ ...cardStyle, textAlign: 'center' }}>
+                <p style={{ color: '#8b949e', fontSize: '0.85rem' }}>No at-risk complaints currently.</p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ===== COMPLAINTS TAB ===== */}
         {activeTab === 'complaints' && (
           <div>
@@ -403,7 +503,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ===== DEPARTMENTS TAB ===== */}
+        {/* ===== DEPARTMENTS TAB (EXPANDED VIEW) ===== */}
         {activeTab === 'departments' && (
           <div>
             {/* Department Performance Chart */}
@@ -416,46 +516,95 @@ export default function AdminDashboard() {
               </div>
             )}
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
-              {departments.map(dept => (
-                <div key={dept.id} style={{ ...cardStyle }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                    <div>
-                      <h3 style={{ color: '#f0f6fc', margin: '0 0 0.15rem', fontSize: '1.05rem' }}>{dept.name}</h3>
-                      <p style={{ color: '#06b6d4', fontSize: '0.7rem', margin: 0 }}>{dept.code}</p>
-                    </div>
+            {/* Each department — FULLY EXPANDED */}
+            {departments.map(dept => (
+              <div key={dept.id} style={{ ...cardStyle, marginBottom: '1.5rem', borderLeft: '3px solid #06b6d4' }}>
+                {/* Department Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <div>
+                    <h3 style={{ color: '#f0f6fc', margin: '0 0 0.15rem', fontSize: '1.15rem' }}>{dept.name}</h3>
+                    <p style={{ color: '#06b6d4', fontSize: '0.75rem', margin: 0 }}>{dept.code}</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                     <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '4px',
                       background: dept.is_active ? 'rgba(46,160,67,0.15)' : 'rgba(248,81,73,0.15)',
                       color: dept.is_active ? '#2ea043' : '#f85149' }}>
                       {dept.is_active ? 'Active' : 'Inactive'}
                     </span>
                   </div>
+                </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.4rem', marginBottom: '0.75rem' }}>
-                    <div style={{ padding: '0.4rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', textAlign: 'center' }}>
-                      <p style={{ color: '#06b6d4', fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>{dept.workerCount || dept.total_workers || 0}</p>
-                      <p style={{ color: '#6e7681', fontSize: '0.65rem', margin: 0 }}>Workers</p>
-                    </div>
-                    <div style={{ padding: '0.4rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', textAlign: 'center' }}>
-                      <p style={{ color: '#a855f7', fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>{dept.activeAssignments || 0}</p>
-                      <p style={{ color: '#6e7681', fontSize: '0.65rem', margin: 0 }}>Active</p>
-                    </div>
-                    <div style={{ padding: '0.4rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', textAlign: 'center' }}>
-                      <p style={{ color: '#2ea043', fontSize: '1.1rem', fontWeight: 700, margin: 0 }}>{dept.completionRate || 0}%</p>
-                      <p style={{ color: '#6e7681', fontSize: '0.65rem', margin: 0 }}>Done</p>
-                    </div>
+                {/* Stats Row */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '1rem' }}>
+                  <div style={{ padding: '0.5rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', textAlign: 'center' }}>
+                    <p style={{ color: '#06b6d4', fontSize: '1.2rem', fontWeight: 700, margin: 0 }}>{(deptWorkers[dept.id] || []).length || dept.total_workers || 0}</p>
+                    <p style={{ color: '#6e7681', fontSize: '0.65rem', margin: 0 }}>Workers</p>
                   </div>
+                  <div style={{ padding: '0.5rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', textAlign: 'center' }}>
+                    <p style={{ color: '#a855f7', fontSize: '1.2rem', fontWeight: 700, margin: 0 }}>{(deptComplaints[dept.id] || []).length || dept.activeAssignments || 0}</p>
+                    <p style={{ color: '#6e7681', fontSize: '0.65rem', margin: 0 }}>Complaints</p>
+                  </div>
+                  <div style={{ padding: '0.5rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', textAlign: 'center' }}>
+                    <p style={{ color: '#2ea043', fontSize: '1.2rem', fontWeight: 700, margin: 0 }}>{dept.completionRate || 0}%</p>
+                    <p style={{ color: '#6e7681', fontSize: '0.65rem', margin: 0 }}>Completed</p>
+                  </div>
+                </div>
 
-                  {dept.head_name && (
-                    <div style={{ padding: '0.5rem', background: 'rgba(245,158,11,0.05)', borderRadius: '6px', border: '1px solid rgba(245,158,11,0.15)' }}>
-                      <p style={{ color: '#f59e0b', fontSize: '0.65rem', margin: '0 0 0.2rem', fontWeight: 600 }}>Department Head</p>
-                      <p style={{ color: '#c9d1d9', fontSize: '0.8rem', margin: 0 }}>{dept.head_name}</p>
-                      {dept.head_email && <p style={{ color: '#8b949e', fontSize: '0.7rem', margin: '0.1rem 0 0' }}>{dept.head_email}</p>}
+                {/* Department Head Info */}
+                {dept.head_name && (
+                  <div style={{ padding: '0.6rem', background: 'rgba(245,158,11,0.05)', borderRadius: '6px', border: '1px solid rgba(245,158,11,0.15)', marginBottom: '1rem' }}>
+                    <p style={{ color: '#f59e0b', fontSize: '0.7rem', margin: '0 0 0.2rem', fontWeight: 600 }}>👤 Department Head</p>
+                    <p style={{ color: '#c9d1d9', fontSize: '0.85rem', margin: 0 }}>{dept.head_name}</p>
+                    {dept.head_email && <p style={{ color: '#8b949e', fontSize: '0.75rem', margin: '0.1rem 0 0' }}>📧 {dept.head_email}</p>}
+                    {dept.head_phone && <p style={{ color: '#8b949e', fontSize: '0.75rem', margin: '0.1rem 0 0' }}>📞 {dept.head_phone}</p>}
+                  </div>
+                )}
+
+                {/* Workers List — ALWAYS VISIBLE */}
+                <div style={{ marginBottom: '1rem' }}>
+                  <h4 style={{ color: '#06b6d4', fontSize: '0.85rem', margin: '0 0 0.5rem' }}>👷 Workers ({(deptWorkers[dept.id] || []).length})</h4>
+                  {(deptWorkers[dept.id] || []).length > 0 ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.5rem' }}>
+                      {(deptWorkers[dept.id] || []).map(w => (
+                        <div key={w.id} style={{ padding: '0.5rem 0.7rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', border: '1px solid rgba(48,54,61,0.4)' }}>
+                          <p style={{ color: '#f0f6fc', fontSize: '0.85rem', margin: '0 0 0.1rem', fontWeight: 500 }}>{w.name}</p>
+                          <p style={{ color: '#8b949e', fontSize: '0.7rem', margin: 0 }}>{w.role || 'Field Worker'} • {w.phone || 'No phone'}</p>
+                          <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.4rem', borderRadius: '3px',
+                            background: w.status === 'on_duty' ? 'rgba(46,160,67,0.15)' : 'rgba(139,148,158,0.1)',
+                            color: w.status === 'on_duty' ? '#2ea043' : '#8b949e' }}>{w.status || 'available'}</span>
+                        </div>
+                      ))}
                     </div>
+                  ) : (
+                    <p style={{ color: '#6e7681', fontSize: '0.8rem', padding: '0.5rem', background: 'rgba(0,0,0,0.15)', borderRadius: '6px' }}>No workers assigned to this department yet.</p>
                   )}
                 </div>
-              ))}
-            </div>
+
+                {/* Complaints List — ALWAYS VISIBLE */}
+                <div>
+                  <h4 style={{ color: '#a855f7', fontSize: '0.85rem', margin: '0 0 0.5rem' }}>📋 Complaints ({(deptComplaints[dept.id] || []).length})</h4>
+                  {(deptComplaints[dept.id] || []).length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      {(deptComplaints[dept.id] || []).map(c => (
+                        <div key={c.id} style={{ padding: '0.5rem 0.7rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem' }}>
+                          <div style={{ flex: 1, minWidth: '150px' }}>
+                            <p style={{ color: '#f0f6fc', fontSize: '0.85rem', margin: '0 0 0.15rem' }}>{c.title}</p>
+                            <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.4rem', borderRadius: '3px', background: (STATUS_COLORS[c.status] || '#8b949e') + '15', color: STATUS_COLORS[c.status] || '#8b949e' }}>{c.status?.replace(/_/g, ' ')}</span>
+                              <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.4rem', borderRadius: '3px', background: (SEV_COLORS[c.severity] || '#8b949e') + '15', color: SEV_COLORS[c.severity] || '#8b949e' }}>{c.severity}</span>
+                              {c.priority_score > 0 && <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.4rem', borderRadius: '3px', background: 'rgba(168,85,247,0.1)', color: '#a855f7' }}>P: {c.priority_score?.toFixed(3)}</span>}
+                            </div>
+                          </div>
+                          <span style={{ color: '#6e7681', fontSize: '0.7rem' }}>{new Date(c.created_at).toLocaleDateString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p style={{ color: '#6e7681', fontSize: '0.8rem', padding: '0.5rem', background: 'rgba(0,0,0,0.15)', borderRadius: '6px' }}>No complaints assigned to this department.</p>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         )}
 

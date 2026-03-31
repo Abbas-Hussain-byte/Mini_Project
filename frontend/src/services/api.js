@@ -31,6 +31,7 @@ api.interceptors.response.use(
 // ==================== AUTH ====================
 export const authAPI = {
   register: (data) => api.post('/auth/register', data),
+  registerDeptHead: (data) => api.post('/auth/register-dept-head', data),
   login: (data) => api.post('/auth/login', data),
   logout: () => api.post('/auth/logout'),
   getMe: () => api.get('/auth/me'),
@@ -72,6 +73,9 @@ export const departmentsAPI = {
   createAssignment: (id, data) => api.post(`/departments/${id}/assignments`, data),
   updateAssignment: (id, data) => api.patch(`/departments/assignments/${id}`, data),
   getPerformance: () => api.get('/departments/performance'),
+  // Worker assignment per complaint
+  assignWorkers: (deptId, complaintId, data) => api.post(`/departments/${deptId}/complaints/${complaintId}/workers`, data),
+  getComplaintWorkers: (deptId, complaintId) => api.get(`/departments/${deptId}/complaints/${complaintId}/workers`),
 };
 
 // ==================== CCTV ====================
@@ -92,6 +96,8 @@ export const adminAPI = {
   getUsers: () => api.get('/admin/users'),
   updateUserRole: (id, data) => api.patch(`/admin/users/${id}/role`, data),
   sendMessage: (data) => api.post('/admin/message', data),
+  getDisasterAlerts: () => api.get('/admin/disaster-alerts'),
+  escalateComplaint: (id) => api.post(`/admin/escalate/${id}`),
 };
 
 export default api;

@@ -20,4 +20,10 @@ router.patch('/users/:id/role', adminController.updateUserRole);
 // POST /api/admin/message — Send message to dept head
 router.post('/message', adminController.sendMessage);
 
+// GET /api/admin/disaster-alerts — Get disaster/escalated alerts
+router.get('/disaster-alerts', adminController.getDisasterAlerts);
+
+// POST /api/admin/escalate/:id — Manually escalate a complaint
+router.post('/escalate/:id', adminController.escalateComplaint);
+
 module.exports = router;
