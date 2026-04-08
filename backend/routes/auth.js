@@ -62,15 +62,16 @@ router.post('/register-dept-head', async (req, res, next) => {
     // 2. Set profile as "pending_dept_head" — NOT department_head yet
     //    Admin must approve before they become active dept heads
     if (data.user) {
+      // Update profile — only write columns that exist in the schema (no department_id column)
       await supabaseAdmin
         .from('profiles')
-        .update({
-          role: 'pending_dept_head',
-          phone: phone || '',
-          full_name,
-          department_id
-        })
+        .update({ role: 'pending_dept_head', phone: phone || '', full_name })
         .eq('id', data.user.id);
+
+      // Store department_id in user_metadata since profiles table doesn't have that column
+      await supabaseAdmin.auth.admin.updateUserById(data.user.id, {
+        user_metadata: { full_name, phone: phone || '', role: 'pending_dept_head', department_id }
+      }).catch(e => console.warn('dept_head metadata warning:', e.message));
     }
 
     res.status(201).json({
@@ -110,6 +111,16 @@ router.post('/login', async (req, res, next) => {
       });
     }
 
+    // Sync profile role → user_metadata so authMiddleware fallback always works
+    const dbRole = profile?.role || 'citizen';
+    const metaRole = data.user.user_metadata?.role;
+    if (dbRole !== metaRole) {
+      // Silently update user_metadata to match profile table
+      await supabaseAdmin.auth.admin.updateUserById(data.user.id, {
+        user_metadata: { ...data.user.user_metadata, role: dbRole }
+      }).catch(e => console.warn('Role sync warning:', e.message));
+    }
+
     res.json({
       user: data.user,
       profile,
@@ -140,6 +151,32 @@ router.get('/me', authMiddleware, async (req, res, next) => {
     if (error) return res.status(404).json({ error: 'Profile not found' });
 
     res.json({ user: req.user, profile });
+  } catch (err) { next(err); }
+});
+
+// POST /api/auth/sync-role — Re-sync user_metadata role from profiles table
+// Call this if role was updated in DB but the token still shows the old role
+router.post('/sync-role', authMiddleware, async (req, res, next) => {
+  try {
+    const { supabaseAdmin } = require('../models/supabaseClient');
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('role, full_name')
+      .eq('id', req.user.id)
+      .single();
+
+    if (!profile) return res.status(404).json({ error: 'Profile not found' });
+
+    // Update user_metadata and app_metadata with current DB role
+    await supabaseAdmin.auth.admin.updateUserById(req.user.id, {
+      user_metadata: { ...req.user.user_metadata, role: profile.role }
+    });
+
+    res.json({
+      message: 'Role synced successfully',
+      role: profile.role,
+      note: 'Please log out and log back in for the new role to take effect in your session.'
+    });
   } catch (err) { next(err); }
 });
 

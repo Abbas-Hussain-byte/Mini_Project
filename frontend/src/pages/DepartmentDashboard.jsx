@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { departmentsAPI, complaintsAPI } from '../services/api';
-import { FiBriefcase, FiUsers, FiClock, FiCheckCircle, FiAlertTriangle, FiPhone, FiMail, FiUser, FiPlus, FiTrash2, FiMessageSquare, FiUserPlus, FiMapPin, FiImage, FiHash, FiChevronDown, FiChevronUp, FiCalendar } from 'react-icons/fi';
+import { departmentsAPI, complaintsAPI, adminAPI } from '../services/api';
+import { FiBriefcase, FiUsers, FiClock, FiCheckCircle, FiAlertTriangle, FiPhone, FiMail, FiUser, FiPlus, FiTrash2, FiMessageSquare, FiUserPlus, FiMapPin, FiImage, FiHash, FiChevronDown, FiChevronUp, FiCalendar, FiDownload } from 'react-icons/fi';
 
 export default function DepartmentDashboard() {
   const { profile } = useAuth();
@@ -20,6 +20,7 @@ export default function DepartmentDashboard() {
   const [selectedWorkerIds, setSelectedWorkerIds] = useState([]);
   const [complaintWorkers, setComplaintWorkers] = useState({});
   const [expandedComplaint, setExpandedComplaint] = useState(null);
+  const [exportLoading, setExportLoading] = useState(false);
 
   const isAdmin = profile?.role === 'admin';
   const isDeptHead = profile?.role === 'department_head';
@@ -131,6 +132,25 @@ export default function DepartmentDashboard() {
     setSelectedWorkerIds(prev =>
       prev.includes(workerId) ? prev.filter(id => id !== workerId) : [...prev, workerId]
     );
+  };
+
+  const handleExport = async (format = 'csv') => {
+    setExportLoading(true);
+    try {
+      const params = { format };
+      if (selectedDept) params.department_id = selectedDept;
+      const res = await adminAPI.exportComplaints(params);
+      const blob = new Blob([res.data], { type: format === 'csv' ? 'text/csv' : 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `department-complaints.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) { alert('Export failed: ' + (err.response?.data?.error || err.message)); }
+    setExportLoading(false);
   };
 
   const shortId = (id) => id ? id.substring(0, 8).toUpperCase() : '—';
@@ -352,7 +372,19 @@ export default function DepartmentDashboard() {
               {/* ===== COMPLAINTS SECTION — FULL DETAILS ===== */}
               {activeSection === 'complaints' && (
                 <div>
-                  <h3 style={{ color: '#e2e8f0', fontSize: '0.9375rem', fontWeight: 700, marginBottom: '0.875rem' }}>Assigned Complaints ({deptComplaints.length})</h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.875rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <h3 style={{ color: '#e2e8f0', fontSize: '0.9375rem', fontWeight: 700, margin: 0 }}>Assigned Complaints ({deptComplaints.length})</h3>
+                    <div style={{ display: 'flex', gap: '0.375rem' }}>
+                      <button onClick={() => handleExport('csv')} disabled={exportLoading}
+                        style={{ padding: '0.4375rem 0.75rem', borderRadius: '7px', border: '1px solid rgba(34,197,94,0.25)', background: 'rgba(34,197,94,0.08)', color: '#22c55e', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', fontWeight: 600 }}>
+                        <FiDownload size={12} /> {exportLoading ? '...' : 'Export CSV'}
+                      </button>
+                      <button onClick={() => handleExport('json')} disabled={exportLoading}
+                        style={{ padding: '0.4375rem 0.75rem', borderRadius: '7px', border: '1px solid rgba(168,85,247,0.25)', background: 'rgba(168,85,247,0.08)', color: '#a855f7', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', fontWeight: 600 }}>
+                        <FiDownload size={12} /> {exportLoading ? '...' : 'Export JSON'}
+                      </button>
+                    </div>
+                  </div>
 
                   {deptComplaints.map(c => (
                     <div key={c.id} style={{ ...cardStyle, marginBottom: '0.875rem', borderLeft: `3px solid ${statusColor(c.status)}` }}>

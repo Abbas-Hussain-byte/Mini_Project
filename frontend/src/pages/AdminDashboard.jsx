@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { complaintsAPI, analyticsAPI, departmentsAPI, adminAPI } from '../services/api';
-import { FiBarChart2, FiAlertTriangle, FiUsers, FiDollarSign, FiCpu, FiBriefcase, FiCheck, FiX, FiMessageSquare, FiSend, FiFilter, FiRefreshCw, FiChevronDown, FiChevronUp, FiImage, FiPlus, FiTrash2, FiUserPlus, FiPhone } from 'react-icons/fi';
+import { FiBarChart2, FiAlertTriangle, FiUsers, FiDollarSign, FiBriefcase, FiCheck, FiX, FiMessageSquare, FiSend, FiFilter, FiRefreshCw, FiChevronDown, FiChevronUp, FiImage, FiPlus, FiTrash2, FiDownload, FiPhone } from 'react-icons/fi';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, Title, Tooltip, Legend } from 'chart.js';
 import { Bar, Line, Doughnut } from 'react-chartjs-2';
 
@@ -57,6 +57,8 @@ export default function AdminDashboard() {
   const [assigningComplaint, setAssigningComplaint] = useState(null);
   const [selectedWorkerIds, setSelectedWorkerIds] = useState([]);
   const [complaintWorkerMap, setComplaintWorkerMap] = useState({});
+  const [deleteModal, setDeleteModal] = useState(null); // { id, title }
+  const [exportLoading, setExportLoading] = useState(false);
   const inputStyle = { width: '100%', padding: '0.7rem 0.85rem', borderRadius: '8px', border: '1px solid rgba(48,54,61,0.8)', background: 'rgba(0,0,0,0.3)', color: '#f0f6fc', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' };
 
   const loadData = useCallback(async () => {
@@ -163,6 +165,35 @@ export default function AdminDashboard() {
       setBudgetResult(res.data);
     } catch (err) { console.error(err); }
     setLoading(false);
+  };
+
+  const handleDeleteComplaint = async (id) => {
+    try {
+      await complaintsAPI.delete(id);
+      setDeleteModal(null);
+      setComplaints(prev => prev.filter(c => c.id !== id));
+      setRecentComplaints(prev => prev.filter(c => c.id !== id));
+    } catch (err) { alert(err.response?.data?.error || 'Delete failed'); }
+  };
+
+  const handleExport = async (format = 'csv', extraParams = {}) => {
+    setExportLoading(true);
+    try {
+      const params = { format, ...extraParams };
+      if (filter.status) params.status = filter.status;
+      if (filter.severity) params.severity = filter.severity;
+      const res = await adminAPI.exportComplaints(params);
+      const blob = new Blob([res.data], { type: format === 'csv' ? 'text/csv' : 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `civicpulse-complaints.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) { alert('Export failed: ' + (err.response?.data?.error || err.message)); }
+    setExportLoading(false);
   };
 
   const loadComplaintUpdates = async (id) => {
@@ -295,6 +326,7 @@ export default function AdminDashboard() {
   };
 
   return (
+    <>
     <div style={{ minHeight: '100vh', padding: '5rem 1rem 2rem', background: 'linear-gradient(135deg, #0a0a1a 0%, #0d1117 50%, #0a1a2a 100%)' }}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
         <h1 style={{ color: '#f0f6fc', fontSize: '1.75rem', marginBottom: '0.25rem' }}>Admin Command Center</h1>
@@ -547,7 +579,18 @@ export default function AdminDashboard() {
               <button onClick={loadData} style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: 'rgba(6, 182, 212, 0.2)', color: '#06b6d4', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.85rem' }}>
                 <FiRefreshCw size={14} /> Refresh
               </button>
-              <span style={{ color: '#6e7681', fontSize: '0.8rem' }}>({complaints.length} results)</span>
+              <span style={{ color: '#6e7681', fontSize: '0.8rem', marginRight: 'auto' }}>({complaints.length} results)</span>
+              {/* Export Buttons */}
+              <div style={{ display: 'flex', gap: '0.375rem' }}>
+                <button onClick={() => handleExport('csv')} disabled={exportLoading}
+                  style={{ padding: '0.5rem 0.875rem', borderRadius: '8px', background: 'rgba(34,197,94,0.12)', color: '#22c55e', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8125rem', fontWeight: 600, border: '1px solid rgba(34,197,94,0.2)' }}>
+                  <FiDownload size={13} /> {exportLoading ? '...' : 'CSV'}
+                </button>
+                <button onClick={() => handleExport('json')} disabled={exportLoading}
+                  style={{ padding: '0.5rem 0.875rem', borderRadius: '8px', background: 'rgba(168,85,247,0.12)', color: '#a855f7', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8125rem', fontWeight: 600, border: '1px solid rgba(168,85,247,0.2)' }}>
+                  <FiDownload size={13} /> {exportLoading ? '...' : 'JSON'}
+                </button>
+              </div>
             </div>
 
             {complaints.map(c => (
@@ -604,6 +647,10 @@ export default function AdminDashboard() {
                         <button onClick={() => setExpandedComplaint(expandedComplaint === c.id ? null : c.id)}
                           style={{ padding: '0.4rem 0.65rem', borderRadius: '6px', border: 'none', background: 'rgba(6,182,212,0.15)', color: '#06b6d4', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                           {expandedComplaint === c.id ? <FiChevronUp size={13} /> : <FiChevronDown size={13} />} Details
+                        </button>
+                        <button onClick={() => setDeleteModal({ id: c.id, title: c.title })}
+                          style={{ padding: '0.4rem 0.65rem', borderRadius: '6px', border: '1px solid rgba(239,68,68,0.25)', background: 'rgba(239,68,68,0.08)', color: '#ef4444', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <FiTrash2 size={13} /> Delete
                         </button>
                       </div>
                     </div>
@@ -992,5 +1039,54 @@ export default function AdminDashboard() {
         )}
       </div>
     </div>
+
+    {/* ===== DELETE CONFIRMATION MODAL ===== */}
+    {deleteModal && (
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 10000,
+        background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem'
+      }}>
+        <div style={{
+          background: 'rgba(15, 23, 42, 0.98)', border: '1px solid rgba(239,68,68,0.3)',
+          borderRadius: '16px', padding: '2rem', maxWidth: '420px', width: '100%',
+          boxShadow: '0 24px 60px rgba(0,0,0,0.6)',
+          animation: 'slideUp 0.2s ease-out'
+        }}>
+          <div style={{ width: '56px', height: '56px', borderRadius: '14px', background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem', fontSize: '1.5rem' }}>
+            🗑️
+          </div>
+          <h3 style={{ color: '#f0f6fc', fontSize: '1.125rem', fontWeight: 700, textAlign: 'center', margin: '0 0 0.5rem' }}>
+            Delete Complaint?
+          </h3>
+          <p style={{ color: '#64748b', fontSize: '0.875rem', textAlign: 'center', margin: '0 0 0.5rem', lineHeight: 1.5 }}>
+            This action <strong style={{ color: '#ef4444' }}>cannot be undone</strong>. All related updates and assignments will also be deleted.
+          </p>
+          <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: '8px', padding: '0.625rem 0.875rem', marginBottom: '1.5rem', textAlign: 'center' }}>
+            <p style={{ color: '#f87171', fontSize: '0.8125rem', fontWeight: 600, margin: 0, fontStyle: 'italic' }}>
+              "{deleteModal.title}"
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button onClick={() => setDeleteModal(null)} style={{
+              flex: 1, padding: '0.75rem', borderRadius: '10px',
+              border: '1px solid rgba(51,65,85,0.6)', background: 'transparent',
+              color: '#cbd5e1', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem'
+            }}>
+              Cancel
+            </button>
+            <button onClick={() => handleDeleteComplaint(deleteModal.id)} style={{
+              flex: 1, padding: '0.75rem', borderRadius: '10px', border: 'none',
+              background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+              color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: '0.875rem',
+              boxShadow: '0 4px 14px rgba(239,68,68,0.3)'
+            }}>
+              🗑️ Delete Permanently
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

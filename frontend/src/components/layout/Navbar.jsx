@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { FiMenu, FiX, FiHome, FiPlusCircle, FiSearch, FiBarChart2, FiMap, FiMonitor, FiUsers, FiLogOut, FiLayout } from 'react-icons/fi';
+import NotificationBell from '../NotificationBell';
 
 export default function Navbar() {
   const { user, profile, isAdmin, isDeptHead, signOut } = useAuth();
@@ -89,7 +90,8 @@ export default function Navbar() {
           </div>
 
           {/* Auth Buttons */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }} className="desktop-nav">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }} className="desktop-nav">
+            {user && <NotificationBell />}
             {user ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 <div style={{ textAlign: 'right' }}>
