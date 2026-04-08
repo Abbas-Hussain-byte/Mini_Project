@@ -155,7 +155,7 @@ exports.createComplaint = async (req, res, next) => {
         ai_detected_labels: detectedLabels,
         priority_score: isEmergency ? Math.max(priorityScore, 0.95) : priorityScore,
         duplicate_of: duplicateOf,
-        status: duplicateOf ? 'duplicate' : (isEmergency ? 'escalated' : 'submitted')
+        status: duplicateOf ? 'duplicate' : 'submitted'
       })
       .select()
       .single();
@@ -449,5 +449,50 @@ exports.getDuplicates = async (req, res, next) => {
       .limit(10);
 
     res.json({ duplicates: nearby || [], count: (nearby || []).length });
+  } catch (err) { next(err); }
+};
+
+/**
+ * DELETE /api/complaints/:id — Delete a complaint (admin only)
+ * Also removes related complaint_updates and department_assignments
+ */
+exports.deleteComplaint = async (req, res, next) => {
+  try {
+    const complaintId = req.params.id;
+
+    // Verify complaint exists
+    const { data: complaint, error: findError } = await supabaseAdmin
+      .from('complaints')
+      .select('id, title')
+      .eq('id', complaintId)
+      .single();
+
+    if (findError || !complaint) {
+      return res.status(404).json({ error: 'Complaint not found' });
+    }
+
+    // 1. Delete related complaint_updates
+    await supabaseAdmin
+      .from('complaint_updates')
+      .delete()
+      .eq('complaint_id', complaintId);
+
+    // 2. Delete related department_assignments
+    await supabaseAdmin
+      .from('department_assignments')
+      .delete()
+      .eq('complaint_id', complaintId);
+
+    // 3. Delete the complaint itself
+    const { error: deleteError } = await supabaseAdmin
+      .from('complaints')
+      .delete()
+      .eq('id', complaintId);
+
+    if (deleteError) {
+      return res.status(500).json({ error: deleteError.message });
+    }
+
+    res.json({ message: `Complaint "${complaint.title}" deleted successfully`, id: complaintId });
   } catch (err) { next(err); }
 };

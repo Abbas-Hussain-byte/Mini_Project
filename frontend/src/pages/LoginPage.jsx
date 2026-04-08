@@ -17,7 +17,9 @@ export default function LoginPage() {
     if (user && profile) {
       if (profile.role === 'admin') navigate('/dashboard');
       else if (profile.role === 'department_head') navigate('/departments');
-      else navigate('/my-dashboard');
+      else if (profile.role === 'pending_dept_head') {
+        // Don't navigate — show pending message
+      } else navigate('/my-dashboard');
     }
   }, [user, profile, navigate]);
 
@@ -58,8 +60,16 @@ export default function LoginPage() {
         return;
       }
 
-      if (loginType === 'dept_head' && userProfile?.role !== 'department_head') {
+      if (loginType === 'dept_head' && !['department_head', 'pending_dept_head'].includes(userProfile?.role)) {
         setError('This account is not registered as a department head.');
+        await supabase.auth.signOut();
+        localStorage.removeItem('access_token');
+        setLoading(false);
+        return;
+      }
+
+      if (userProfile?.role === 'pending_dept_head') {
+        setError('Your department head registration is pending admin approval. Please contact the administrator.');
         await supabase.auth.signOut();
         localStorage.removeItem('access_token');
         setLoading(false);
@@ -83,8 +93,8 @@ export default function LoginPage() {
 
   const isAdmin = loginType === 'admin';
   const isDeptHead = loginType === 'dept_head';
-  const accentColor = isAdmin ? '#f59e0b' : isDeptHead ? '#a855f7' : '#06b6d4';
-  const accentDark = isAdmin ? '#d97706' : isDeptHead ? '#7c3aed' : '#0891b2';
+  const accentColor = isAdmin ? '#f59e0b' : isDeptHead ? '#a855f7' : '#38bdf8';
+  const accentDark = isAdmin ? '#d97706' : isDeptHead ? '#7c3aed' : '#0ea5e9';
 
   return (
     <div style={{
@@ -102,12 +112,12 @@ export default function LoginPage() {
     }}>
       <div style={{
         background: 'rgba(22, 27, 34, 0.9)',
-        borderRadius: '16px',
+        borderRadius: '20px',
         padding: '2.5rem',
         width: '100%',
         maxWidth: '440px',
-        border: `1px solid ${accentColor}33`,
-        boxShadow: `0 0 40px ${accentColor}26`,
+        border: `1px solid ${accentColor}22`,
+        boxShadow: `0 20px 60px rgba(0,0,0,0.4), 0 0 40px ${accentColor}15`,
         transition: 'all 0.5s ease'
       }}>
         {/* Role Toggle — 3 tabs */}
@@ -119,18 +129,18 @@ export default function LoginPage() {
           marginBottom: '2rem'
         }}>
           {[
-            { id: 'citizen', label: 'Citizen', icon: <FiUser />, color: '#06b6d4' },
+            { id: 'citizen', label: 'Citizen', icon: <FiUser />, color: '#38bdf8' },
             { id: 'dept_head', label: 'Dept Head', icon: <FiShield />, color: '#a855f7' },
             { id: 'admin', label: 'Admin', icon: <FiShield />, color: '#f59e0b' },
           ].map(tab => (
             <button key={tab.id} type="button"
               onClick={() => { setLoginType(tab.id); setEmail(''); setError(''); }}
               style={{
-                flex: 1, padding: '0.65rem 0.5rem', borderRadius: '10px', border: 'none', cursor: 'pointer',
+                flex: 1, padding: '0.7rem 0.5rem', borderRadius: '10px', border: 'none', cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
-                fontWeight: 600, fontSize: '0.8rem',
-                background: loginType === tab.id ? `${tab.color}33` : 'transparent',
-                color: loginType === tab.id ? tab.color : '#8b949e',
+                fontWeight: 600, fontSize: '0.85rem',
+                background: loginType === tab.id ? `${tab.color}22` : 'transparent',
+                color: loginType === tab.id ? tab.color : '#64748b',
                 transition: 'all 0.3s ease'
               }}>
               {tab.icon} {tab.label}
@@ -138,42 +148,44 @@ export default function LoginPage() {
           ))}
         </div>
 
-        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+        <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
           <div style={{
-            width: '56px', height: '56px', borderRadius: '50%',
+            width: '60px', height: '60px', borderRadius: '50%',
             background: `linear-gradient(135deg, ${accentColor}, ${accentDark})`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 1rem', fontSize: '1.5rem', transition: 'all 0.3s ease'
+            margin: '0 auto 1rem', fontSize: '1.5rem', transition: 'all 0.3s ease',
+            boxShadow: `0 8px 24px ${accentColor}30`
           }}>
             {isAdmin ? <FiShield color="#fff" /> : isDeptHead ? <FiShield color="#fff" /> : <FiUser color="#fff" />}
           </div>
-          <h2 style={{ color: '#f0f6fc', margin: '0 0 0.5rem', fontSize: '1.5rem' }}>
+          <h2 style={{ color: '#f0f6fc', margin: '0 0 0.5rem', fontSize: '1.5rem', fontWeight: 700 }}>
             {isAdmin ? 'Admin Login' : isDeptHead ? 'Department Head Login' : 'Citizen Login'}
           </h2>
-          <p style={{ color: '#8b949e', fontSize: '0.85rem' }}>
-            {isAdmin ? 'Access the administrative dashboard' : isDeptHead ? 'Manage your department, workers & complaints' : 'Sign in with your registered email'}
+          <p style={{ color: '#64748b', fontSize: '0.875rem', fontWeight: 400, margin: 0 }}>
+            {isAdmin ? 'Access the administrative dashboard' : isDeptHead ? 'Manage your department & complaints' : 'Sign in with your registered email'}
           </p>
         </div>
 
         {error && (
           <div style={{
             padding: '0.75rem 1rem', background: 'rgba(248, 81, 73, 0.1)',
-            border: '1px solid rgba(248, 81, 73, 0.3)', borderRadius: '8px',
-            color: '#f85149', fontSize: '0.85rem', marginBottom: '1rem'
+            border: '1px solid rgba(248, 81, 73, 0.25)', borderRadius: '10px',
+            color: '#f85149', fontSize: '0.875rem', marginBottom: '1.25rem',
+            fontWeight: 500, lineHeight: 1.5
           }}>{error}</div>
         )}
 
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '1.25rem' }}>
-            <label style={{ display: 'block', color: '#c9d1d9', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 500 }}>
+            <label style={{ display: 'block', color: '#e2e8f0', fontSize: '0.875rem', marginBottom: '0.5rem', fontWeight: 600 }}>
               Email Address
             </label>
             <div style={{
               display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)',
-              borderRadius: '10px', border: `1px solid ${email ? accentColor + '40' : 'rgba(48, 54, 61, 0.8)'}`,
+              borderRadius: '12px', border: `1px solid ${email ? accentColor + '40' : 'rgba(51, 65, 85, 0.5)'}`,
               padding: '0 1rem', transition: 'border-color 0.3s'
             }}>
-              <FiMail color="#8b949e" />
+              <FiMail color="#64748b" size={16} />
               <input
                 type="email"
                 placeholder={isAdmin ? 'admin@example.com' : isDeptHead ? 'depthead@example.com' : 'you@gmail.com'}
@@ -182,22 +194,23 @@ export default function LoginPage() {
                 required
                 style={{
                   flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                  color: '#f0f6fc', padding: '0.85rem 0.75rem', fontSize: '0.95rem'
+                  color: '#f0f6fc', padding: '0.875rem 0.75rem', fontSize: '0.9375rem',
+                  fontWeight: 400
                 }}
               />
             </div>
           </div>
 
-          <div style={{ marginBottom: '1.5rem' }}>
-            <label style={{ display: 'block', color: '#c9d1d9', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 500 }}>
+          <div style={{ marginBottom: '1.75rem' }}>
+            <label style={{ display: 'block', color: '#e2e8f0', fontSize: '0.875rem', marginBottom: '0.5rem', fontWeight: 600 }}>
               Password
             </label>
             <div style={{
               display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)',
-              borderRadius: '10px', border: `1px solid ${password ? accentColor + '40' : 'rgba(48, 54, 61, 0.8)'}`,
+              borderRadius: '12px', border: `1px solid ${password ? accentColor + '40' : 'rgba(51, 65, 85, 0.5)'}`,
               padding: '0 1rem', transition: 'border-color 0.3s'
             }}>
-              <FiLock color="#8b949e" />
+              <FiLock color="#64748b" size={16} />
               <input
                 type="password"
                 placeholder="Enter your password"
@@ -206,7 +219,8 @@ export default function LoginPage() {
                 required
                 style={{
                   flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                  color: '#f0f6fc', padding: '0.85rem 0.75rem', fontSize: '0.95rem'
+                  color: '#f0f6fc', padding: '0.875rem 0.75rem', fontSize: '0.9375rem',
+                  fontWeight: 400
                 }}
               />
             </div>
@@ -216,12 +230,13 @@ export default function LoginPage() {
             type="submit"
             disabled={loading}
             style={{
-              width: '100%', padding: '0.85rem', borderRadius: '10px', border: 'none',
+              width: '100%', padding: '0.9375rem', borderRadius: '12px', border: 'none',
               background: `linear-gradient(135deg, ${accentColor}, ${accentDark})`,
-              color: '#fff', fontSize: '1rem', fontWeight: 600,
+              color: '#fff', fontSize: '1rem', fontWeight: 700,
               cursor: loading ? 'not-allowed' : 'pointer',
               opacity: loading ? 0.7 : 1,
-              transition: 'opacity 0.3s, transform 0.2s',
+              transition: 'all 0.3s',
+              boxShadow: `0 4px 16px ${accentColor}30`
             }}
           >
             {loading ? 'Signing in...' : 'Sign In'}
@@ -229,21 +244,21 @@ export default function LoginPage() {
         </form>
 
         {loginType === 'citizen' && (
-          <p style={{ textAlign: 'center', color: '#8b949e', marginTop: '1.5rem', fontSize: '0.85rem' }}>
+          <p style={{ textAlign: 'center', color: '#64748b', marginTop: '1.5rem', fontSize: '0.875rem' }}>
             Don't have an account?{' '}
-            <Link to="/register" style={{ color: '#06b6d4', textDecoration: 'none', fontWeight: 500 }}>Register Account</Link>
+            <Link to="/register" style={{ color: '#38bdf8', textDecoration: 'none', fontWeight: 600 }}>Register Account</Link>
           </p>
         )}
 
         {loginType === 'dept_head' && (
-          <p style={{ textAlign: 'center', color: '#8b949e', marginTop: '1.5rem', fontSize: '0.85rem' }}>
+          <p style={{ textAlign: 'center', color: '#64748b', marginTop: '1.5rem', fontSize: '0.875rem' }}>
             Not registered yet?{' '}
-            <Link to="/register-dept-head" style={{ color: '#a855f7', textDecoration: 'none', fontWeight: 500 }}>Register as Dept Head</Link>
+            <Link to="/register-dept-head" style={{ color: '#a855f7', textDecoration: 'none', fontWeight: 600 }}>Register as Dept Head</Link>
           </p>
         )}
 
         {loginType === 'admin' && (
-          <p style={{ textAlign: 'center', color: '#6e7681', marginTop: '1.5rem', fontSize: '0.8rem' }}>
+          <p style={{ textAlign: 'center', color: '#475569', marginTop: '1.5rem', fontSize: '0.8125rem' }}>
             Admin accounts are created by system administrators
           </p>
         )}

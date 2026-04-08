@@ -2,7 +2,7 @@ const router = require('express').Router();
 const { supabase } = require('../models/supabaseClient');
 const { authMiddleware } = require('../middleware/authMiddleware');
 
-// POST /api/auth/register
+// POST /api/auth/register — Citizen registration (email-based)
 router.post('/register', async (req, res, next) => {
   try {
     const { email, password, full_name, phone } = req.body;
@@ -21,6 +21,15 @@ router.post('/register', async (req, res, next) => {
 
     if (error) return res.status(400).json({ error: error.message });
 
+    // Update profile with phone number
+    if (data.user) {
+      const { supabaseAdmin } = require('../models/supabaseClient');
+      await supabaseAdmin
+        .from('profiles')
+        .update({ phone: phone || '', full_name, role: 'citizen' })
+        .eq('id', data.user.id);
+    }
+
     res.status(201).json({
       message: 'Registration successful',
       user: data.user,
@@ -29,7 +38,7 @@ router.post('/register', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/auth/register-dept-head
+// POST /api/auth/register-dept-head — Dept head registration (pending approval)
 router.post('/register-dept-head', async (req, res, next) => {
   try {
     const { email, password, full_name, phone, department_id } = req.body;
@@ -45,38 +54,29 @@ router.post('/register-dept-head', async (req, res, next) => {
       email,
       password,
       email_confirm: true,
-      user_metadata: { full_name, phone: phone || '', role: 'department_head' }
+      user_metadata: { full_name, phone: phone || '', role: 'pending_dept_head' }
     });
 
     if (error) return res.status(400).json({ error: error.message });
 
-    // 2. Update profile to set role and link department
+    // 2. Set profile as "pending_dept_head" — NOT department_head yet
+    //    Admin must approve before they become active dept heads
     if (data.user) {
       await supabaseAdmin
         .from('profiles')
         .update({
-          role: 'department_head',
+          role: 'pending_dept_head',
           phone: phone || '',
           full_name,
           department_id
         })
         .eq('id', data.user.id);
-
-      // 3. Update department with head info
-      await supabaseAdmin
-        .from('departments')
-        .update({
-          head_name: full_name,
-          head_email: email,
-          head_phone: phone || '',
-          head_user_id: data.user.id
-        })
-        .eq('id', department_id);
     }
 
     res.status(201).json({
-      message: 'Department head registered successfully',
-      user: data.user
+      message: 'Registration submitted! An administrator will review and approve your department head access.',
+      user: data.user,
+      pendingApproval: true
     });
   } catch (err) { next(err); }
 });
@@ -95,11 +95,20 @@ router.post('/login', async (req, res, next) => {
     if (error) return res.status(401).json({ error: error.message });
 
     // Fetch profile with role
-    const { data: profile } = await supabase
+    const { supabaseAdmin } = require('../models/supabaseClient');
+    const { data: profile } = await supabaseAdmin
       .from('profiles')
       .select('*')
       .eq('id', data.user.id)
       .single();
+
+    // Block pending dept heads from accessing the platform
+    if (profile?.role === 'pending_dept_head') {
+      return res.status(403).json({
+        error: 'Your department head registration is pending admin approval. Please contact the administrator.',
+        pendingApproval: true
+      });
+    }
 
     res.json({
       user: data.user,
@@ -121,7 +130,8 @@ router.post('/logout', async (req, res, next) => {
 // GET /api/auth/me
 router.get('/me', authMiddleware, async (req, res, next) => {
   try {
-    const { data: profile, error } = await supabase
+    const { supabaseAdmin } = require('../models/supabaseClient');
+    const { data: profile, error } = await supabaseAdmin
       .from('profiles')
       .select('*')
       .eq('id', req.user.id)

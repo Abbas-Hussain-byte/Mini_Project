@@ -1,10 +1,10 @@
 """
 CivicPulse ML Service
-Flask API for AI inference: YOLOv8 hazard detection, zero-shot text classification,
+Flask API for AI inference: YOLOv11 hazard detection, zero-shot text classification,
 CLIP multimodal embeddings, and sentence embeddings.
 
 Models chosen for free-tier / CPU deployment:
-  - YOLOv8n (6MB, ~40ms inference)
+  - YOLO11n (5.4MB, SOTA object detection)
   - distilbert-base-uncased-mnli (250MB, ~200ms, 5x faster than BART-large)
   - all-MiniLM-L6-v2 (80MB, ~15ms per sentence)
   - CLIP ViT-B/32 (600MB, loaded lazily)
@@ -37,7 +37,7 @@ models = {
     'sentence_model': None,
 }
 
-# YOLOv8 class names (Kaggle Urban Issues Dataset)
+# YOLOv11 class names (Kaggle Urban Issues Dataset)
 YOLO_CLASSES = [
     'damaged_road', 'pothole', 'illegal_parking', 'broken_road_sign',
     'fallen_trees', 'littering', 'vandalism', 'dead_animal',
@@ -145,9 +145,9 @@ LABEL_DESCRIPTIONS = {
 
 
 def load_yolo():
-    """Load YOLOv8n model (fine-tuned > HF download > pretrained)"""
+    """Load YOLOv11n model (fine-tuned > HF download > pretrained)"""
     if models['yolo'] is None:
-        print("🔄 Loading YOLOv8n model...")
+        print("🔄 Loading YOLOv11n model...")
         from ultralytics import YOLO
         # Check for fine-tuned model first
         finetuned_path = os.path.join(os.path.dirname(__file__), 'models', 'yolo-urban', 'best.pt')
@@ -175,9 +175,9 @@ def load_yolo():
                 print(f"   ✅ Downloaded fine-tuned model to {dl_path}")
                 models['yolo'] = YOLO(dl_path)
             except Exception as hf_err:
-                print(f"   ⚠️ HF download failed ({hf_err}), using pretrained YOLOv8n")
-                models['yolo'] = YOLO('yolov8n.pt')
-        print("✅ YOLOv8n loaded")
+                print(f"   ⚠️ HF download failed ({hf_err}), using pretrained YOLOv11n")
+                models['yolo'] = YOLO('yolo11n.pt')
+        print("✅ YOLOv11n loaded")
     return models['yolo']
 
 
@@ -318,7 +318,7 @@ def health():
 
 @app.route('/ml/analyze-image', methods=['POST'])
 def analyze_image():
-    """YOLOv8 hazard detection on uploaded image or image file"""
+    """YOLOv11 hazard detection on uploaded image or image file"""
     try:
         image = None
 
@@ -360,7 +360,7 @@ def analyze_image():
         return jsonify({
             'detections': detections,
             'count': len(detections),
-            'model': 'yolov8-finetuned' if conf_threshold == 0.15 else 'yolov8n'
+            'model': 'yolov11-finetuned' if conf_threshold == 0.15 else 'yolo11n'
         })
 
     except Exception as e:

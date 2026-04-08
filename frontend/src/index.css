@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -7,6 +9,19 @@
   --civic-card: #1e293b;
   --civic-border: #334155;
   --civic-accent: #38bdf8;
+  --civic-muted: #64748b;
+  --civic-text: #e2e8f0;
+  --civic-text-bright: #f0f6fc;
+
+  /* Typography Scale */
+  --font-xs: 0.6875rem;    /* 11px - tiny labels */
+  --font-sm: 0.75rem;      /* 12px - badges, meta */
+  --font-base: 0.875rem;   /* 14px - body text */
+  --font-md: 0.9375rem;    /* 15px - labels, descriptions */
+  --font-lg: 1rem;         /* 16px - card titles */
+  --font-xl: 1.25rem;      /* 20px - section headings */
+  --font-2xl: 1.5rem;      /* 24px - dialog headings */
+  --font-3xl: 1.75rem;     /* 28px - page titles */
 }
 
 * {
@@ -18,16 +33,25 @@
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   background: var(--civic-dark);
-  color: #e2e8f0;
+  color: var(--civic-text);
   min-height: 100vh;
   overflow-x: hidden;
+  font-size: var(--font-base);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Smooth transitions globally */
+a, button, input, select, textarea {
+  transition: all 0.2s ease;
 }
 
 /* Custom scrollbar */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--civic-dark); }
 ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #64748b; }
+::-webkit-scrollbar-thumb:hover { background: var(--civic-muted); }
 
 /* Leaflet overrides for dark theme */
 .leaflet-container {
@@ -36,7 +60,7 @@ body {
 }
 .leaflet-popup-content-wrapper {
   background: var(--civic-card) !important;
-  color: #e2e8f0 !important;
+  color: var(--civic-text) !important;
   border-radius: 12px !important;
   box-shadow: 0 10px 40px rgba(0,0,0,0.4) !important;
 }
@@ -84,6 +108,26 @@ body {
   100% { background-position: 0% 50%; }
 }
 
+/* Fade in animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Slide up animation */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.25s ease-out;
+}
+
 /* Pulse ring animation */
 .pulse-ring {
   position: relative;
@@ -111,15 +155,41 @@ body {
 /* Global dropdown fix — dark background for all select/option elements */
 select {
   background-color: rgba(0, 0, 0, 0.3);
-  color: #c9d1d9;
+  color: #cbd5e1;
+  cursor: pointer;
 }
 select option {
   background-color: #1a1a2e;
   color: #e0e0e0;
 }
 
+/* Focus states */
+input:focus, select:focus, textarea:focus {
+  border-color: var(--civic-accent) !important;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1);
+}
+
 /* Loading spinner animation */
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+/* Button hover effects */
+button:not(:disabled):hover {
+  filter: brightness(1.1);
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Responsive utilities */
+@media (max-width: 768px) {
+  :root {
+    --font-3xl: 1.5rem;
+    --font-2xl: 1.25rem;
+    --font-xl: 1.125rem;
+  }
 }

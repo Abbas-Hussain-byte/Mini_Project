@@ -69,12 +69,17 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('access_token');
   };
 
-  const isAdmin = profile?.role === 'admin' || profile?.role === 'department_head';
+  // Separate roles: admin is ONLY admin, isDeptHead is ONLY department_head
+  const isAdmin = profile?.role === 'admin';
+  const isDeptHead = profile?.role === 'department_head';
+  // Staff = admin OR active department_head
+  const isStaff = isAdmin || isDeptHead;
 
   return (
     <AuthContext.Provider value={{
-      user, profile, loading, isAdmin,
-      signUp, signIn, signOut
+      user, profile, loading,
+      isAdmin, isDeptHead, isStaff,
+      signUp, signIn, signOut, fetchProfile
     }}>
       {children}
     </AuthContext.Provider>

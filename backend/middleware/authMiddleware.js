@@ -18,10 +18,10 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid or expired token' });
     }
 
-    // ALWAYS fetch profile to get role
+    // ALWAYS fetch profile to get role and department
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('role, full_name, phone')
+      .select('role, full_name, phone, department_id')
       .eq('id', user.id)
       .single();
 
@@ -29,7 +29,8 @@ const authMiddleware = async (req, res, next) => {
       ...user,
       role: profile?.role || 'citizen',
       full_name: profile?.full_name || '',
-      phone: profile?.phone || ''
+      phone: profile?.phone || '',
+      department_id: profile?.department_id || null
     };
     req.token = token;
     next();

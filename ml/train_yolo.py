@@ -1,10 +1,10 @@
 """
-CivicPulse — YOLOv8 Fine-Tuning on Kaggle Urban Issues Dataset
+CivicPulse — YOLOv11 Fine-Tuning on Kaggle Urban Issues Dataset
 Handles the nested ClassName/ClassName/split/images structure,
-remaps labels to a unified 10-class scheme, and trains YOLOv8n.
+remaps labels to a unified 10-class scheme, and trains YOLOv11n.
 
 Usage:
-    python train_yolo.py                        # Full training (30 epochs)
+    python train_yolo.py                        # Full training (50 epochs, full dataset)
     python train_yolo.py --epochs 5 --dry-run   # Quick test
 """
 
@@ -249,7 +249,7 @@ def create_data_yaml():
 
 
 def train_yolo(args):
-    """Fine-tune YOLOv8n on the prepared dataset."""
+    """Fine-tune YOLOv11n on the prepared dataset."""
     
     # Step 1: Prepare dataset
     print("\n" + "=" * 60)
@@ -270,27 +270,22 @@ def train_yolo(args):
     
     # Step 3: Train
     print("\n" + "=" * 60)
-    print("STEP 2: Training YOLOv8")
+    print("STEP 2: Training YOLOv11")
     print("=" * 60 + "\n")
     
     from ultralytics import YOLO
     
-    # Load existing checkpoint to preserve the 14-hour training!
+    # Load existing checkpoint or start fresh with YOLOv11n
     last_ckpt = os.path.join(ML_DIR, 'runs', 'yolo-urban', 'weights', 'last.pt')
-    base_model = os.path.join(ML_DIR, 'yolov8n.pt')
     
     if os.path.exists(last_ckpt):
-        print(f"📦 Resuming from your hard-earned checkpoint: {last_ckpt}")
-        print("   -> (Preserving all knowledge from the 14-hour run!)")
+        print(f"📦 Resuming from checkpoint: {last_ckpt}")
         model = YOLO(last_ckpt)
-    elif not os.path.exists(base_model):
-        print("📥 Downloading YOLOv8n pretrained weights...")
-        model = YOLO('yolov8n.pt')
     else:
-        print(f"📦 Loading base model: {base_model}")
-        model = YOLO(base_model)
+        print("📥 Loading YOLOv11n pretrained weights (state-of-the-art)...")
+        model = YOLO('yolo11n.pt')
     
-    # Training with CPU-friendly settings
+    # Training settings
     print(f"\n🚀 Starting training:")
     print(f"   Epochs: {args.epochs}")
     print(f"   Image size: {args.imgsz}")
@@ -352,12 +347,12 @@ def train_yolo(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Train YOLOv8 on Urban Issues Dataset')
-    parser.add_argument('--epochs', type=int, default=30, help='Training epochs (default: 30)')
-    parser.add_argument('--imgsz', type=int, default=416, help='Image size (default: 416, use 640 for better accuracy)')
-    parser.add_argument('--batch', type=int, default=8, help='Batch size (default: 8, reduce if OOM)')
-    parser.add_argument('--device', type=str, default='cpu', help='Device: cpu or 0 for GPU')
-    parser.add_argument('--max_per_class', type=int, default=400, help='Subset dataset for faster CPU training (e.g., 400 imgs/class)')
+    parser = argparse.ArgumentParser(description='Train YOLOv11 on Urban Issues Dataset')
+    parser.add_argument('--epochs', type=int, default=50, help='Training epochs (default: 50)')
+    parser.add_argument('--imgsz', type=int, default=640, help='Image size (default: 640 for best accuracy)')
+    parser.add_argument('--batch', type=int, default=16, help='Batch size (default: 16, reduce if OOM)')
+    parser.add_argument('--device', type=str, default='0', help='Device: cpu or 0 for GPU')
+    parser.add_argument('--max_per_class', type=int, default=None, help='Subset dataset (None = use full dataset)')
     parser.add_argument('--dry-run', action='store_true', help='Only prepare dataset, skip training')
     
     args = parser.parse_args()

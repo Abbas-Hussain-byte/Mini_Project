@@ -146,10 +146,12 @@ export default function AdminDashboard() {
     } catch (err) { alert('Message failed'); }
   };
 
-  const handleRoleChange = async (userId, role) => {
+  const handleRoleChange = async (userId, role, departmentId = null) => {
     if (!confirm(`Change this user's role to ${role}?`)) return;
     try {
-      await adminAPI.updateUserRole(userId, { role });
+      const data = { role };
+      if (departmentId) data.department_id = departmentId;
+      await adminAPI.updateUserRole(userId, data);
       loadData();
     } catch (err) { alert('Role update failed'); }
   };
@@ -898,44 +900,94 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ===== USERS TAB ===== */}
+        {/* ===== USERS TAB (with Dept Head Approval) ===== */}
         {activeTab === 'users' && (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  {['Name', 'Email', 'Phone', 'Role', 'Joined', 'Actions'].map(h => (
-                    <th key={h} style={{ textAlign: 'left', padding: '0.75rem', color: '#8b949e', fontSize: '0.8rem', borderBottom: '1px solid rgba(48,54,61,0.5)' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {users.map(u => (
-                  <tr key={u.id} style={{ borderBottom: '1px solid rgba(48,54,61,0.3)' }}>
-                    <td style={{ padding: '0.75rem', color: '#f0f6fc', fontSize: '0.85rem' }}>{u.full_name || '—'}</td>
-                    <td style={{ padding: '0.75rem', color: '#8b949e', fontSize: '0.85rem' }}>{u.email}</td>
-                    <td style={{ padding: '0.75rem', color: '#8b949e', fontSize: '0.85rem' }}>{u.phone || '—'}</td>
-                    <td style={{ padding: '0.75rem' }}>
-                      <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem', borderRadius: '4px',
-                        background: u.role === 'admin' ? 'rgba(245,158,11,0.15)' : u.role === 'department_head' ? 'rgba(168,85,247,0.15)' : 'rgba(6,182,212,0.15)',
-                        color: u.role === 'admin' ? '#f59e0b' : u.role === 'department_head' ? '#a855f7' : '#06b6d4' }}>{u.role?.replace(/_/g, ' ')}</span>
-                    </td>
-                    <td style={{ padding: '0.75rem', color: '#6e7681', fontSize: '0.8rem' }}>{u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
-                    <td style={{ padding: '0.75rem' }}>
-                      {/* Only admins can change roles, and can't change their own */}
-                      {profile?.role === 'admin' && u.id !== profile?.id && (
-                        <select value={u.role} onChange={e => handleRoleChange(u.id, e.target.value)}
-                          style={{ padding: '0.35rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(48,54,61,0.8)', background: 'rgba(0,0,0,0.3)', color: '#c9d1d9', fontSize: '0.75rem' }}>
-                          <option value="citizen">Citizen</option>
-                          <option value="admin">Admin</option>
-                          <option value="department_head">Dept Head</option>
+          <div>
+            {/* Pending Dept Head Approvals */}
+            {users.filter(u => u.role === 'pending_dept_head').length > 0 && (
+              <div style={{ ...cardStyle, marginBottom: '1.25rem', borderLeft: '3px solid #f59e0b', background: 'rgba(245,158,11,0.04)' }}>
+                <h3 style={{ color: '#f59e0b', margin: '0 0 0.75rem', fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  ⏳ Pending Department Head Approvals ({users.filter(u => u.role === 'pending_dept_head').length})
+                </h3>
+                {users.filter(u => u.role === 'pending_dept_head').map(u => (
+                  <div key={u.id} style={{ padding: '0.875rem', background: 'rgba(0,0,0,0.2)', borderRadius: '10px', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <div>
+                      <p style={{ color: '#f0f6fc', fontSize: '0.9375rem', margin: '0 0 0.25rem', fontWeight: 600 }}>{u.full_name || 'Unknown'}</p>
+                      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.8125rem', color: '#94a3b8' }}>{u.email}</span>
+                        {u.phone && <span style={{ fontSize: '0.8125rem', color: '#94a3b8' }}>📞 {u.phone}</span>}
+                        {u.departments && <span style={{ fontSize: '0.8125rem', color: '#a855f7', fontWeight: 600 }}>🏢 {u.departments.name} ({u.departments.code})</span>}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      {/* Department selector (if not already linked) */}
+                      {!u.department_id && (
+                        <select
+                          onChange={e => {
+                            if (e.target.value) handleRoleChange(u.id, 'department_head', e.target.value);
+                          }}
+                          defaultValue=""
+                          style={{ padding: '0.4rem 0.6rem', borderRadius: '8px', border: '1px solid rgba(51,65,85,0.5)', background: 'rgba(0,0,0,0.3)', color: '#cbd5e1', fontSize: '0.8125rem', cursor: 'pointer', fontWeight: 500 }}>
+                          <option value="" disabled>Assign to dept...</option>
+                          {departments.map(d => (
+                            <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
+                          ))}
                         </select>
                       )}
-                    </td>
-                  </tr>
+                      <button onClick={() => handleRoleChange(u.id, 'department_head', u.department_id)}
+                        style={{ padding: '0.4rem 0.875rem', borderRadius: '8px', border: 'none', background: 'rgba(34,197,94,0.2)', color: '#22c55e', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 700 }}>
+                        ✓ Approve
+                      </button>
+                      <button onClick={() => handleRoleChange(u.id, 'citizen')}
+                        style={{ padding: '0.4rem 0.875rem', borderRadius: '8px', border: 'none', background: 'rgba(239,68,68,0.15)', color: '#ef4444', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 700 }}>
+                        ✕ Reject
+                      </button>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+            )}
+
+            {/* All Users Table */}
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    {['Name', 'Email', 'Phone', 'Role', 'Department', 'Joined', 'Actions'].map(h => (
+                      <th key={h} style={{ textAlign: 'left', padding: '0.75rem', color: '#94a3b8', fontSize: '0.8125rem', borderBottom: '1px solid rgba(51,65,85,0.4)', fontWeight: 700 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map(u => (
+                    <tr key={u.id} style={{ borderBottom: '1px solid rgba(51,65,85,0.2)', transition: 'background 0.2s' }}>
+                      <td style={{ padding: '0.75rem', color: '#f0f6fc', fontSize: '0.875rem', fontWeight: 500 }}>{u.full_name || '—'}</td>
+                      <td style={{ padding: '0.75rem', color: '#94a3b8', fontSize: '0.875rem' }}>{u.email}</td>
+                      <td style={{ padding: '0.75rem', color: '#94a3b8', fontSize: '0.875rem' }}>{u.phone || '—'}</td>
+                      <td style={{ padding: '0.75rem' }}>
+                        <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '6px', fontWeight: 600,
+                          background: u.role === 'admin' ? 'rgba(245,158,11,0.12)' : u.role === 'department_head' ? 'rgba(168,85,247,0.12)' : u.role === 'pending_dept_head' ? 'rgba(245,158,11,0.08)' : 'rgba(56,189,248,0.12)',
+                          color: u.role === 'admin' ? '#f59e0b' : u.role === 'department_head' ? '#a855f7' : u.role === 'pending_dept_head' ? '#f59e0b' : '#38bdf8' }}>
+                          {u.role?.replace(/_/g, ' ')}
+                        </span>
+                      </td>
+                      <td style={{ padding: '0.75rem', color: '#a855f7', fontSize: '0.8125rem', fontWeight: 500 }}>{u.departments?.name || '—'}</td>
+                      <td style={{ padding: '0.75rem', color: '#64748b', fontSize: '0.8125rem' }}>{u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
+                      <td style={{ padding: '0.75rem' }}>
+                        {profile?.role === 'admin' && u.id !== profile?.id && u.role !== 'pending_dept_head' && (
+                          <select value={u.role} onChange={e => handleRoleChange(u.id, e.target.value)}
+                            style={{ padding: '0.375rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(51,65,85,0.5)', background: 'rgba(0,0,0,0.3)', color: '#cbd5e1', fontSize: '0.75rem', fontWeight: 500 }}>
+                            <option value="citizen">Citizen</option>
+                            <option value="admin">Admin</option>
+                            <option value="department_head">Dept Head</option>
+                          </select>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </div>

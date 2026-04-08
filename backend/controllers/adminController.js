@@ -61,7 +61,7 @@ exports.getUsers = async (req, res, next) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('profiles')
-      .select('*')
+      .select('*, departments(id, name, code)')
       .order('created_at', { ascending: false });
 
     if (error) return res.status(500).json({ error: error.message });
@@ -75,21 +75,70 @@ exports.getUsers = async (req, res, next) => {
  */
 exports.updateUserRole = async (req, res, next) => {
   try {
-    const { role } = req.body;
-    const validRoles = ['citizen', 'admin', 'department_head'];
+    const { role, department_id } = req.body;
+    const validRoles = ['citizen', 'admin', 'department_head', 'pending_dept_head'];
 
     if (!role || !validRoles.includes(role)) {
       return res.status(400).json({ error: `role must be one of: ${validRoles.join(', ')}` });
     }
 
+    // Fetch current profile to get user info
+    const { data: currentProfile } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+
+    if (!currentProfile) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const updateData = { role, updated_at: new Date().toISOString() };
+
+    // If setting department_id (for dept head approval)
+    if (department_id) {
+      updateData.department_id = department_id;
+    }
+
     const { data, error } = await supabaseAdmin
       .from('profiles')
-      .update({ role, updated_at: new Date().toISOString() })
+      .update(updateData)
       .eq('id', req.params.id)
       .select()
       .single();
 
     if (error) return res.status(500).json({ error: error.message });
+
+    // If approving a dept head, also update the department table with head info
+    if (role === 'department_head') {
+      const deptId = department_id || currentProfile.department_id;
+      if (deptId) {
+        await supabaseAdmin
+          .from('departments')
+          .update({
+            head_name: currentProfile.full_name,
+            head_email: currentProfile.email || '',
+            head_phone: currentProfile.phone || '',
+            head_user_id: req.params.id
+          })
+          .eq('id', deptId);
+      }
+    }
+
+    // If demoting from dept head, clear department head fields
+    if (currentProfile.role === 'department_head' && role !== 'department_head') {
+      if (currentProfile.department_id) {
+        await supabaseAdmin
+          .from('departments')
+          .update({
+            head_name: null,
+            head_email: null,
+            head_phone: null,
+            head_user_id: null
+          })
+          .eq('id', currentProfile.department_id);
+      }
+    }
 
     res.json({ message: 'Role updated', user: data });
   } catch (err) { next(err); }

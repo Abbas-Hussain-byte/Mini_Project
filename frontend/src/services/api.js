@@ -49,6 +49,7 @@ export const complaintsAPI = {
   rejectResolution: (id, data) => api.post(`/complaints/${id}/reject-resolution`, data),
   getDuplicates: (id) => api.get(`/complaints/${id}/duplicates`),
   getNearby: (params) => api.get('/complaints/nearby', { params }),
+  delete: (id) => api.delete(`/complaints/${id}`),
 };
 
 // ==================== ANALYTICS ====================
