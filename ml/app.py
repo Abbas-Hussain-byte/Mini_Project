@@ -115,6 +115,22 @@ CATEGORY_INHERENT_SEVERITY = {
 SEVERITY_RANK = {'low': 1, 'medium': 2, 'high': 3, 'critical': 4}
 RANK_TO_SEVERITY = {1: 'low', 2: 'medium', 3: 'high', 4: 'critical'}
 
+# Per-class confidence thresholds:
+# Lower = accept weaker detections (for hard-to-detect classes)
+# Higher = require stronger signal (for noisy/easy classes)
+PER_CLASS_CONF = {
+    'damaged_road': 0.18,
+    'pothole': 0.15,
+    'illegal_parking': 0.25,
+    'broken_road_sign': 0.18,
+    'fallen_trees': 0.15,
+    'littering': 0.20,
+    'vandalism': 0.20,
+    'dead_animal': 0.10,            # Hard to detect — accept weaker signals
+    'damaged_concrete': 0.18,
+    'damaged_electric_wires': 0.10, # Hard to detect — accept weaker signals
+}
+
 # Title templates for image-only mode
 LABEL_TITLES = {
     'damaged_road': 'Damaged Road Surface Detected — Requires Road Maintenance',
@@ -338,9 +354,9 @@ def analyze_image():
             return jsonify({'error': 'Failed to load image'}), 400
 
         model = load_yolo()
-        # Use lower conf for fine-tuned model (it detects specific urban issues)
-        conf_threshold = 0.15 if os.path.exists(os.path.join(os.path.dirname(__file__), 'models', 'yolo-urban', 'best.pt')) else 0.25
-        results = model(image, conf=conf_threshold, verbose=False)
+        # Use low base conf to catch everything, then filter per-class
+        base_conf = 0.08 if os.path.exists(os.path.join(os.path.dirname(__file__), 'models', 'yolo-urban', 'best.pt')) else 0.25
+        results = model(image, conf=base_conf, verbose=False)
 
         detections = []
         for result in results:
@@ -348,8 +364,13 @@ def analyze_image():
                 cls_id = int(box.cls[0])
                 confidence = float(box.conf[0])
                 label = YOLO_CLASSES[cls_id] if cls_id < len(YOLO_CLASSES) else f'class_{cls_id}'
+                
+                # Per-class confidence filtering
+                min_conf = PER_CLASS_CONF.get(label, 0.15)
+                if confidence < min_conf:
+                    continue
+                    
                 bbox = box.xyxy[0].tolist()
-
                 detections.append({
                     'label': label,
                     'confidence': round(confidence, 4),
@@ -360,7 +381,7 @@ def analyze_image():
         return jsonify({
             'detections': detections,
             'count': len(detections),
-            'model': 'yolov11-finetuned' if conf_threshold == 0.15 else 'yolo11n'
+            'model': 'yolo-finetuned' if base_conf == 0.08 else 'yolo-pretrained'
         })
 
     except Exception as e:
@@ -473,14 +494,20 @@ def analyze_complete():
         # 1. Image analysis with YOLO
         if image is not None:
             model = load_yolo()
-            # Use lower confidence for fine-tuned model
-            conf_threshold = 0.15 if os.path.exists(os.path.join(os.path.dirname(__file__), 'models', 'yolo-urban', 'best.pt')) else 0.25
+            # Use low base conf, filter per-class
+            conf_threshold = 0.08 if os.path.exists(os.path.join(os.path.dirname(__file__), 'models', 'yolo-urban', 'best.pt')) else 0.25
             yolo_results = model(image, conf=conf_threshold, verbose=False)
             for r in yolo_results:
                 for box in r.boxes:
                     cls_id = int(box.cls[0])
                     conf = float(box.conf[0])
                     label = YOLO_CLASSES[cls_id] if cls_id < len(YOLO_CLASSES) else f'class_{cls_id}'
+                    
+                    # Per-class confidence filtering
+                    min_conf = PER_CLASS_CONF.get(label, 0.15)
+                    if conf < min_conf:
+                        continue
+                        
                     result['detections'].append({
                         'label': label,
                         'confidence': round(conf, 4),

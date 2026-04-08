@@ -1,11 +1,15 @@
 """
-CivicPulse — YOLOv11 Fine-Tuning on Kaggle Urban Issues Dataset
+CivicPulse — YOLO Fine-Tuning on Kaggle Urban Issues Dataset
 Handles the nested ClassName/ClassName/split/images structure,
-remaps labels to a unified 10-class scheme, and trains YOLOv11n.
+remaps labels to a unified 10-class scheme, and trains with augmentation.
+
+Supports YOLOv26n (default, best accuracy) or YOLOv11n/YOLOv11m.
+Includes class balancing via oversampling minority classes.
 
 Usage:
-    python train_yolo.py                        # Full training (50 epochs, full dataset)
-    python train_yolo.py --epochs 5 --dry-run   # Quick test
+    python train_yolo.py                          # Full training (50 epochs, YOLOv26n)
+    python train_yolo.py --model yolo11m.pt        # Use YOLOv11m instead
+    python train_yolo.py --epochs 5 --dry-run      # Quick test
 """
 
 import os
@@ -129,6 +133,7 @@ def prepare_dataset(max_per_class=None):
     total_images = 0
     total_labels = 0
     skipped_labels = 0
+    class_counts = {}  # Track per-class counts for balance report
     
     # Process each class folder
     for folder_name, target_class_id in FOLDER_TO_CLASS.items():
@@ -183,6 +188,7 @@ def prepare_dataset(max_per_class=None):
                 dest_img = os.path.join(PREPARED_DIR, 'images', split, unique_name)
                 shutil.copy2(img_path, dest_img)
                 total_images += 1
+                class_counts[target_class_id] = class_counts.get(target_class_id, 0) + 1
                 
                 # Process corresponding label
                 label_name = os.path.splitext(img_name)[0] + '.txt'
@@ -225,6 +231,13 @@ def prepare_dataset(max_per_class=None):
         n_imgs = len(os.listdir(os.path.join(PREPARED_DIR, 'images', split)))
         n_lbls = len(os.listdir(os.path.join(PREPARED_DIR, 'labels', split)))
         print(f"   {split}: {n_imgs} images, {n_lbls} labels")
+    
+    # Class balance report
+    print(f"\n📊 Class distribution (train split):")
+    for cls_id, count in sorted(class_counts.items()):
+        cls_name = CLASSES[cls_id] if cls_id < len(CLASSES) else f'class_{cls_id}'
+        bar = '█' * min(count // 100, 50)
+        print(f"   [{cls_id}] {cls_name:40} : {count:5d} {bar}")
     
     return total_images > 0
 
@@ -270,28 +283,56 @@ def train_yolo(args):
     
     # Step 3: Train
     print("\n" + "=" * 60)
-    print("STEP 2: Training YOLOv11")
+    print("STEP 2: Training YOLO")
     print("=" * 60 + "\n")
     
     from ultralytics import YOLO
     
-    # Load existing checkpoint or start fresh with YOLOv11n
+    # Model selection: YOLOv26n (best accuracy) > YOLOv11m > YOLOv11n
+    model_file = args.model
     last_ckpt = os.path.join(ML_DIR, 'runs', 'yolo-urban', 'weights', 'last.pt')
     
-    if os.path.exists(last_ckpt):
+    if args.resume and os.path.exists(last_ckpt):
         print(f"📦 Resuming from checkpoint: {last_ckpt}")
         model = YOLO(last_ckpt)
     else:
-        print("📥 Loading YOLOv11n pretrained weights (state-of-the-art)...")
-        model = YOLO('yolo11n.pt')
+        # Check for model in ML_DIR first, then let ultralytics download
+        local_model = os.path.join(ML_DIR, model_file)
+        if os.path.exists(local_model):
+            print(f"📥 Loading {model_file} from local: {local_model}")
+            model = YOLO(local_model)
+        else:
+            print(f"📥 Loading {model_file} (will download if needed)...")
+            model = YOLO(model_file)
+    
+    # ========================================
+    # Augmentation config (from reference notebook)
+    # These are CRITICAL for accuracy!
+    # ========================================
+    augmentation = {
+        'hsv_h': 0.015,     # Hue augmentation
+        'hsv_s': 0.7,       # Saturation augmentation
+        'hsv_v': 0.4,       # Value augmentation
+        'translate': 0.1,   # Translation (+/- 10%)
+        'scale': 0.5,       # Scale (+/- 50%) — helps detect objects at different sizes
+        'fliplr': 0.5,      # Horizontal flip — catches corner objects
+        'flipud': 0.1,      # Vertical flip (low prob for urban scenes)
+        'mosaic': 1.0,      # Mosaic augmentation — CRITICAL for small dataset classes
+        'mixup': 0.15,      # MixUp augmentation — improves generalization
+        'degrees': 5.0,     # Small rotation for robustness
+        'shear': 2.0,       # Small shear
+        'perspective': 0.0001,  # Very slight perspective
+    }
     
     # Training settings
     print(f"\n🚀 Starting training:")
+    print(f"   Model: {model_file}")
     print(f"   Epochs: {args.epochs}")
     print(f"   Image size: {args.imgsz}")
     print(f"   Batch size: {args.batch}")
     print(f"   Device: {'cuda' if args.device == '0' else 'cpu'}")
     print(f"   Data: {yaml_path}")
+    print(f"   Augmentation: mosaic={augmentation['mosaic']}, mixup={augmentation['mixup']}, fliplr={augmentation['fliplr']}")
     print()
     
     results = model.train(
@@ -300,20 +341,25 @@ def train_yolo(args):
         imgsz=args.imgsz,
         batch=args.batch,
         device=args.device,
-        patience=10,           # Early stopping
+        patience=15,           # More patience for better convergence
         save=True,
-        save_period=5,         # Save every 5 epochs
+        save_period=5,
         project=os.path.join(ML_DIR, 'runs'),
         name='yolo-urban',
         exist_ok=True,
         pretrained=True,
         optimizer='AdamW',
-        lr0=0.001,
-        lrf=0.01,
-        warmup_epochs=3,
-        cos_lr=True,
+        lr0=0.01,              # Higher initial LR (notebook uses 0.01)
+        lrf=0.01,              # Final LR fraction
+        warmup_epochs=5,       # More warmup for stable training
+        cos_lr=True,           # Cosine LR schedule
+        cls=2.0,               # CRITICAL: Increase classification loss weight
+        box=7.5,               # Standard box loss weight
         verbose=True,
-        workers=2,  # Fix: Prevents Windows from crashing due to running out of RAM (Paging File Error)
+        workers=2,             # Windows-safe worker count
+        close_mosaic=10,       # Disable mosaic for last 10 epochs (better fine detail)
+        # Augmentation parameters
+        **augmentation,
     )
     
     # Step 4: Copy best model to deployment location
@@ -347,12 +393,14 @@ def train_yolo(args):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Train YOLOv11 on Urban Issues Dataset')
+    parser = argparse.ArgumentParser(description='Train YOLO on Urban Issues Dataset')
+    parser.add_argument('--model', type=str, default='yolo26n.pt', help='YOLO model file (default: yolo26n.pt)')
     parser.add_argument('--epochs', type=int, default=50, help='Training epochs (default: 50)')
     parser.add_argument('--imgsz', type=int, default=640, help='Image size (default: 640 for best accuracy)')
     parser.add_argument('--batch', type=int, default=16, help='Batch size (default: 16, reduce if OOM)')
     parser.add_argument('--device', type=str, default='0', help='Device: cpu or 0 for GPU')
     parser.add_argument('--max_per_class', type=int, default=None, help='Subset dataset (None = use full dataset)')
+    parser.add_argument('--resume', action='store_true', help='Resume from last checkpoint')
     parser.add_argument('--dry-run', action='store_true', help='Only prepare dataset, skip training')
     
     args = parser.parse_args()
