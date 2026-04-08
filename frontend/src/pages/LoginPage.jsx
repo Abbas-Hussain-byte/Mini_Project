@@ -167,7 +167,6 @@ export default function LoginPage() {
           </h2>
           <p style={{ color: '#8b949e', fontSize: '0.85rem' }}>
             {isAdmin ? 'Access the administrative dashboard' : isDeptHead ? 'Manage your department, workers & complaints' : 'Sign in with your registered phone number'}
-            {isAdmin ? 'Access the administrative dashboard' : 'Sign in with your registered email address'}
           </p>
         </div>
 
@@ -183,7 +182,6 @@ export default function LoginPage() {
           <div style={{ marginBottom: '1.25rem' }}>
             <label style={{ display: 'block', color: '#c9d1d9', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 500 }}>
               {loginType === 'citizen' ? 'Phone Number' : 'Email Address'}
-              Email Address
             </label>
             <div style={{
               display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)',
@@ -194,10 +192,6 @@ export default function LoginPage() {
               <input
                 type={loginType === 'citizen' ? 'tel' : 'email'}
                 placeholder={loginType === 'citizen' ? 'Enter your registered phone number' : loginType === 'dept_head' ? 'Enter your department email' : 'admin@example.com'}
-              {isAdmin ? <FiMail color="#8b949e" /> : <FiMail color="#8b949e" />}
-              <input
-                type="email"
-                placeholder={isAdmin ? 'admin@example.com' : 'Enter your registered email (e.g. someone@gmail.com)'}
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 required

@@ -32,10 +32,8 @@ export default function TrackComplaint() {
 
   const loadComplaints = async () => {
     try {
-      const { data } = await complaintsAPI.getAll({ sort_by: 'created_at', order: 'desc', limit: 50 });
-      // Filter to user's complaints
-      const mine = data.complaints?.filter(c => c.user_id === user?.id) || [];
-      setComplaints(mine);
+      const { data } = await complaintsAPI.getAll({ sort_by: 'created_at', order: 'desc', limit: 50, user_id: user?.id });
+      setComplaints(data.complaints || []);
     } catch (err) {
       console.error('Failed to load complaints', err);
     }

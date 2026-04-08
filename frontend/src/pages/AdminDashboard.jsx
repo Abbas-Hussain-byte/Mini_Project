@@ -539,18 +539,6 @@ export default function AdminDashboard() {
                     <p style={{ color: '#06b6d4', fontSize: '0.75rem', margin: 0 }}>{dept.code}</p>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-<!--
-//             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1rem' }}>
-//               {departments.length === 0 ? (
-//                 <p style={{ color: '#8b949e', textAlign: 'center', padding: '2rem' }}>No departments found.</p>
-//               ) : departments.map(dept => (
-//                 <div key={dept.id} style={{ ...cardStyle }}>
-//                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-//                     <div>
-//                       <h3 style={{ color: '#f0f6fc', margin: '0 0 0.15rem', fontSize: '1.05rem' }}>{dept.name}</h3>
-//                       <p style={{ color: '#06b6d4', fontSize: '0.7rem', margin: 0 }}>{dept.code}</p>
-//                     </div> 
--->
                     <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '4px',
                       background: dept.is_active ? 'rgba(46,160,67,0.15)' : 'rgba(248,81,73,0.15)',
                       color: dept.is_active ? '#2ea043' : '#f85149' }}>
@@ -604,39 +592,12 @@ export default function AdminDashboard() {
                     <p style={{ color: '#6e7681', fontSize: '0.8rem', padding: '0.5rem', background: 'rgba(0,0,0,0.15)', borderRadius: '6px' }}>No workers assigned to this department yet.</p>
                   )}
                 </div>
-<! --
-                {/* Complaints List — ALWAYS VISIBLE */}
-                <div>
-                  <h4 style={{ color: '#a855f7', fontSize: '0.85rem', margin: '0 0 0.5rem' }}>📋 Complaints ({(deptComplaints[dept.id] || []).length})</h4>
-                  {(deptComplaints[dept.id] || []).length > 0 ? (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                      {(deptComplaints[dept.id] || []).map(c => (
-                        <div key={c.id} style={{ padding: '0.5rem 0.7rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.4rem' }}>
-                          <div style={{ flex: 1, minWidth: '150px' }}>
-                            <p style={{ color: '#f0f6fc', fontSize: '0.85rem', margin: '0 0 0.15rem' }}>{c.title}</p>
-                            <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.4rem', borderRadius: '3px', background: (STATUS_COLORS[c.status] || '#8b949e') + '15', color: STATUS_COLORS[c.status] || '#8b949e' }}>{c.status?.replace(/_/g, ' ')}</span>
-                              <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.4rem', borderRadius: '3px', background: (SEV_COLORS[c.severity] || '#8b949e') + '15', color: SEV_COLORS[c.severity] || '#8b949e' }}>{c.severity}</span>
-                              {c.priority_score > 0 && <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.4rem', borderRadius: '3px', background: 'rgba(168,85,247,0.1)', color: '#a855f7' }}>P: {c.priority_score?.toFixed(3)}</span>}
-                            </div>
-                          </div>
-                          <span style={{ color: '#6e7681', fontSize: '0.7rem' }}>{new Date(c.created_at).toLocaleDateString()}</span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p style={{ color: '#6e7681', fontSize: '0.8rem', padding: '0.5rem', background: 'rgba(0,0,0,0.15)', borderRadius: '6px' }}>No complaints assigned to this department.</p>
-                  )}
-                </div>
               </div>
             ))}
-              ))}
-            </div>
               </>
             )}
           </div>
         )}
--->
         {/* ===== BUDGET TAB ===== */}
         {activeTab === 'budget' && (
           <div>

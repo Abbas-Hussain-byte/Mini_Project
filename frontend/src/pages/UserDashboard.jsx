@@ -37,9 +37,8 @@ export default function UserDashboard() {
 
   const loadData = async () => {
     try {
-      const { data } = await complaintsAPI.getAll({ sort_by: 'created_at', order: 'desc', limit: 100 });
-      const mine = data.complaints?.filter(c => c.user_id === user?.id) || [];
-      setComplaints(mine);
+      const { data } = await complaintsAPI.getAll({ sort_by: 'created_at', order: 'desc', limit: 100, user_id: user?.id });
+      setComplaints(data.complaints || []);
     } catch (err) {
       console.error('Failed to load dashboard data', err);
     }

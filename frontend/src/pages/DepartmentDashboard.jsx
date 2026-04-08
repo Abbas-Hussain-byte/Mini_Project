@@ -298,8 +298,7 @@ export default function DepartmentDashboard() {
                         <select value={newWorker.role} onChange={e => setNewWorker(w => ({ ...w, role: e.target.value }))} style={{ ...inputStyle, flex: 1 }}>
                           <option value="field_worker">Field Worker</option>
                           <option value="supervisor">Supervisor</option>
-                          <option value="inspector">Inspector</option>
-                          <option value="technician">Technician</option>
+                          <option value="manager">Manager</option>
                         </select>
                         <button type="submit" style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: '#2ea043', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>Add</button>
                       </div>
