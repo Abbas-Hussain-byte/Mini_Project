@@ -264,12 +264,19 @@ exports.updateComplaint = async (req, res, next) => {
     const { status, severity, category, notes } = req.body;
     const updateData = { updated_at: new Date().toISOString() };
 
-    // Dept heads can only set status to pending_verification, not resolved
     const userRole = req.user.role;
+    
+    // Role-based status restrictions
     if (status === 'resolved' && userRole !== 'admin') {
       return res.status(403).json({
-        error: 'Only administrators can mark complaints as resolved. Use pending_verification instead.'
+        error: 'Only administrators can mark complaints as resolved. Department heads should use "pending_verification".'
       });
+    }
+
+    // Valid status transitions
+    const validStatuses = ['submitted', 'under_review', 'assigned', 'in_progress', 'pending_verification', 'resolved', 'rejected'];
+    if (status && !validStatuses.includes(status)) {
+      return res.status(400).json({ error: `Invalid status. Valid: ${validStatuses.join(', ')}` });
     }
 
     if (status) updateData.status = status;
@@ -279,9 +286,18 @@ exports.updateComplaint = async (req, res, next) => {
 
     const { data: existing } = await supabaseAdmin
       .from('complaints')
-      .select('status')
+      .select('status, department_id')
       .eq('id', req.params.id)
       .single();
+
+    if (!existing) return res.status(404).json({ error: 'Complaint not found' });
+
+    // Dept heads can only update complaints in their department
+    if (userRole === 'department_head' && req.user.department_id) {
+      if (existing.department_id && existing.department_id !== req.user.department_id) {
+        return res.status(403).json({ error: 'You can only update complaints assigned to your department' });
+      }
+    }
 
     const { data, error } = await supabaseAdmin
       .from('complaints')
@@ -300,9 +316,34 @@ exports.updateComplaint = async (req, res, next) => {
         updated_by: req.user.id,
         old_status: existing?.status,
         new_status: status || existing?.status,
-        comment: notes || `Status updated to ${status}`
+        comment: notes || `Status updated to ${status} by ${userRole}`
       });
 
+    // Also sync the department_assignment status if complaint status changed
+    if (status && existing.department_id) {
+      const assignmentStatusMap = {
+        'assigned': 'acknowledged',
+        'in_progress': 'in_progress',
+        'pending_verification': 'completed',
+        'resolved': 'completed'
+      };
+      if (assignmentStatusMap[status]) {
+        const assignUpdate = { status: assignmentStatusMap[status] };
+        if (status === 'resolved' || status === 'pending_verification') {
+          assignUpdate.completed_at = new Date().toISOString();
+        }
+        if (status === 'in_progress') {
+          assignUpdate.started_at = new Date().toISOString();
+        }
+        await supabaseAdmin
+          .from('department_assignments')
+          .update(assignUpdate)
+          .eq('complaint_id', req.params.id)
+          .eq('department_id', existing.department_id);
+      }
+    }
+
+    console.log(`✅ Complaint ${req.params.id} updated: ${existing.status} → ${status} by ${userRole}`);
     res.json({ message: 'Complaint updated', complaint: data });
   } catch (err) { next(err); }
 };
@@ -450,5 +491,50 @@ exports.getDuplicates = async (req, res, next) => {
       .limit(10);
 
     res.json({ duplicates: nearby || [], count: (nearby || []).length });
+  } catch (err) { next(err); }
+};
+
+/**
+ * DELETE /api/complaints/:id — Delete a complaint (admin only)
+ * Also removes related complaint_updates and department_assignments
+ */
+exports.deleteComplaint = async (req, res, next) => {
+  try {
+    const complaintId = req.params.id;
+
+    // Verify complaint exists
+    const { data: complaint, error: findError } = await supabaseAdmin
+      .from('complaints')
+      .select('id, title')
+      .eq('id', complaintId)
+      .single();
+
+    if (findError || !complaint) {
+      return res.status(404).json({ error: 'Complaint not found' });
+    }
+
+    // 1. Delete related complaint_updates
+    await supabaseAdmin
+      .from('complaint_updates')
+      .delete()
+      .eq('complaint_id', complaintId);
+
+    // 2. Delete related department_assignments
+    await supabaseAdmin
+      .from('department_assignments')
+      .delete()
+      .eq('complaint_id', complaintId);
+
+    // 3. Delete the complaint itself
+    const { error: deleteError } = await supabaseAdmin
+      .from('complaints')
+      .delete()
+      .eq('id', complaintId);
+
+    if (deleteError) {
+      return res.status(500).json({ error: deleteError.message });
+    }
+
+    res.json({ message: `Complaint "${complaint.title}" deleted successfully`, id: complaintId });
   } catch (err) { next(err); }
 };

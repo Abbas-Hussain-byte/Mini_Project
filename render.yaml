@@ -7,7 +7,7 @@ services:
     buildCommand: npm install
     startCommand: node server.js
     envVars:
-      - key: NODE_ENV
+      - key: NODE
         value: production
       - key: SUPABASE_URL
         sync: false

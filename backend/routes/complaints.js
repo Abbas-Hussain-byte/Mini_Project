@@ -27,4 +27,7 @@ router.post('/:id/reject-resolution', authMiddleware, adminMiddleware, complaint
 // GET /api/complaints/:id/duplicates — Get duplicate suggestions
 router.get('/:id/duplicates', complaintController.getDuplicates);
 
+// DELETE /api/complaints/:id — Delete complaint (admin only)
+router.delete('/:id', authMiddleware, adminMiddleware, complaintController.deleteComplaint);
+
 module.exports = router;

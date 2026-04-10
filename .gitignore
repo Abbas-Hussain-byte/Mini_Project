@@ -12,9 +12,9 @@ dist/
 build/
 *.egg-info/
 
-# ML models (large files)
+# ML models (large binary files)
 ml/models/
-*.pt
+ml/*.pt
 *.onnx
 *.bin
 !ml/requirements.txt
@@ -35,6 +35,7 @@ npm-debug.log*
 # Python virtual env
 venv/
 .venv/
+ml/venv/
 
 # Environment files anywhere
 .env.*
@@ -46,3 +47,7 @@ ml/data/
 ml/runs/
 .ipynb_checkpoints/
 *.ipynb
+
+# Temporary / utility scripts (not needed in repo)
+ml/_*.py
+_nb_extract.txt

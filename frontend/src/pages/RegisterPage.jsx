@@ -51,7 +51,7 @@ export default function RegisterPage() {
 
       if (authError) {
         if (authError.message.includes('already registered')) {
-          throw new Error('An account with this phone number already exists. Please log in.');
+          throw new Error('An account with this email already exists. Please log in.');
         }
         throw authError;
       }
@@ -72,20 +72,34 @@ export default function RegisterPage() {
     }
   };
 
+  const inputContainerStyle = {
+    display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)',
+    borderRadius: '12px', border: '1px solid rgba(51, 65, 85, 0.5)', padding: '0 1rem',
+    transition: 'border-color 0.3s'
+  };
+  const inputStyle = {
+    flex: 1, background: 'transparent', border: 'none', outline: 'none',
+    color: '#f0f6fc', padding: '0.875rem 0.75rem', fontSize: '0.9375rem', fontWeight: 400
+  };
+  const labelStyle = {
+    display: 'block', color: '#e2e8f0', fontSize: '0.875rem', marginBottom: '0.5rem', fontWeight: 600
+  };
+
   if (success) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', background: 'linear-gradient(135deg, #0a0a1a 0%, #0d1117 50%, #0a1a2a 100%)' }}>
-        <div style={{ background: 'rgba(22, 27, 34, 0.9)', borderRadius: '16px', padding: '2.5rem', maxWidth: '440px', width: '100%', border: '1px solid rgba(46, 160, 67, 0.3)', textAlign: 'center' }}>
-          <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(46, 160, 67, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem', fontSize: '1.8rem' }}>
-            <FiCheckCircle color="#2ea043" />
+        <div style={{ background: 'rgba(22, 27, 34, 0.9)', borderRadius: '20px', padding: '2.5rem', maxWidth: '440px', width: '100%', border: '1px solid rgba(34, 197, 94, 0.25)', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+          <div style={{ width: '68px', height: '68px', borderRadius: '50%', background: 'rgba(34, 197, 94, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem', fontSize: '1.8rem' }}>
+            <FiCheckCircle color="#22c55e" size={32} />
           </div>
-          <h2 style={{ color: '#f0f6fc', margin: '0 0 0.5rem' }}>Account Created!</h2>
-          <p style={{ color: '#8b949e', marginBottom: '1.5rem' }}>
+          <h2 style={{ color: '#f0f6fc', margin: '0 0 0.75rem', fontSize: '1.5rem', fontWeight: 700 }}>Account Created!</h2>
+          <p style={{ color: '#94a3b8', marginBottom: '1.5rem', fontSize: '0.9375rem' }}>
             You can now sign in using your email address.
           </p>
           <Link to="/login" style={{
-            display: 'inline-block', padding: '0.85rem 2rem', borderRadius: '10px', border: 'none',
-            background: 'linear-gradient(135deg, #06b6d4, #0891b2)', color: '#fff', textDecoration: 'none', fontWeight: 600
+            display: 'inline-block', padding: '0.875rem 2rem', borderRadius: '12px', border: 'none',
+            background: 'linear-gradient(135deg, #38bdf8, #0ea5e9)', color: '#fff', textDecoration: 'none',
+            fontWeight: 700, fontSize: '0.9375rem', boxShadow: '0 4px 16px rgba(56, 189, 248, 0.3)'
           }}>
             Go to Login
           </Link>
@@ -96,88 +110,89 @@ export default function RegisterPage() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem', background: 'linear-gradient(135deg, #0a0a1a 0%, #0d1117 50%, #0a1a2a 100%)' }}>
-      <div style={{ background: 'rgba(22, 27, 34, 0.9)', borderRadius: '16px', padding: '2.5rem', width: '100%', maxWidth: '440px', border: '1px solid rgba(6, 182, 212, 0.15)', boxShadow: '0 0 40px rgba(6, 182, 212, 0.1)' }}>
-        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-          <div style={{ width: '56px', height: '56px', borderRadius: '50%', background: 'linear-gradient(135deg, #06b6d4, #7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem', fontSize: '1.5rem' }}>
-            <FiUserPlus color="#fff" />
+      <div style={{ background: 'rgba(22, 27, 34, 0.9)', borderRadius: '20px', padding: '2.5rem', width: '100%', maxWidth: '440px', border: '1px solid rgba(56, 189, 248, 0.12)', boxShadow: '0 20px 60px rgba(0,0,0,0.4), 0 0 40px rgba(56, 189, 248, 0.06)' }}>
+        <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
+          <div style={{ width: '60px', height: '60px', borderRadius: '50%', background: 'linear-gradient(135deg, #38bdf8, #818cf8)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem', fontSize: '1.5rem', boxShadow: '0 8px 24px rgba(56, 189, 248, 0.3)' }}>
+            <FiUserPlus color="#fff" size={24} />
           </div>
-          <h2 style={{ color: '#f0f6fc', margin: '0 0 0.5rem', fontSize: '1.5rem' }}>Citizen Registration</h2>
-          <p style={{ color: '#8b949e', fontSize: '0.85rem' }}>Sign up with your email to report civic issues</p>
+          <h2 style={{ color: '#f0f6fc', margin: '0 0 0.5rem', fontSize: '1.5rem', fontWeight: 700 }}>Citizen Registration</h2>
+          <p style={{ color: '#64748b', fontSize: '0.875rem', margin: 0 }}>Sign up with your email to report civic issues</p>
         </div>
 
         {error && (
-          <div style={{ padding: '0.75rem 1rem', background: 'rgba(248, 81, 73, 0.1)', border: '1px solid rgba(248, 81, 73, 0.3)', borderRadius: '8px', color: '#f85149', fontSize: '0.85rem', marginBottom: '1rem' }}>{error}</div>
+          <div style={{ padding: '0.75rem 1rem', background: 'rgba(248, 81, 73, 0.1)', border: '1px solid rgba(248, 81, 73, 0.25)', borderRadius: '10px', color: '#f85149', fontSize: '0.875rem', marginBottom: '1.25rem', fontWeight: 500 }}>{error}</div>
         )}
 
         <form onSubmit={handleSubmit}>
           {/* Full Name */}
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', color: '#c9d1d9', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 500 }}>
+            <label style={labelStyle}>
               Full Name <span style={{ color: '#f85149' }}>*</span>
             </label>
-            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: '1px solid rgba(48, 54, 61, 0.8)', padding: '0 1rem' }}>
-              <FiUser color="#8b949e" />
-              <input type="text" placeholder="Enter your full name" value={formData.fullName} onChange={handleChange('fullName')} required
-                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f0f6fc', padding: '0.85rem 0.75rem', fontSize: '0.95rem' }} />
+            <div style={inputContainerStyle}>
+              <FiUser color="#64748b" size={16} />
+              <input type="text" placeholder="Enter your full name" value={formData.fullName} onChange={handleChange('fullName')} required style={inputStyle} />
             </div>
           </div>
 
           {/* Email Address */}
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', color: '#c9d1d9', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 500 }}>
+            <label style={labelStyle}>
               Email Address <span style={{ color: '#f85149' }}>*</span>
             </label>
-            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: '1px solid rgba(48, 54, 61, 0.8)', padding: '0 1rem' }}>
-              <FiMail color="#8b949e" />
-              <input type="email" placeholder="Enter your email (e.g. someone@gmail.com)" value={formData.email} onChange={handleChange('email')} required
-                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f0f6fc', padding: '0.85rem 0.75rem', fontSize: '0.95rem' }} />
+            <div style={inputContainerStyle}>
+              <FiMail color="#64748b" size={16} />
+              <input type="email" placeholder="Enter your email (e.g. someone@gmail.com)" value={formData.email} onChange={handleChange('email')} required style={inputStyle} />
             </div>
           </div>
 
           {/* Phone Number */}
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', color: '#c9d1d9', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 500 }}>
+            <label style={labelStyle}>
               Phone Number
             </label>
-            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: '1px solid rgba(48, 54, 61, 0.8)', padding: '0 1rem' }}>
-              <FiPhone color="#8b949e" />
-              <input type="tel" placeholder="Enter your phone number (optional)" value={formData.phone} onChange={handleChange('phone')}
-                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f0f6fc', padding: '0.85rem 0.75rem', fontSize: '0.95rem' }} />
+            <div style={inputContainerStyle}>
+              <FiPhone color="#64748b" size={16} />
+              <input type="tel" placeholder="Enter your phone number (optional)" value={formData.phone} onChange={handleChange('phone')} style={inputStyle} />
             </div>
           </div>
 
           {/* Password */}
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', color: '#c9d1d9', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 500 }}>
+            <label style={labelStyle}>
               Password <span style={{ color: '#f85149' }}>*</span>
             </label>
-            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: '1px solid rgba(48, 54, 61, 0.8)', padding: '0 1rem' }}>
-              <FiLock color="#8b949e" />
-              <input type="password" placeholder="Create a password (min 6 characters)" value={formData.password} onChange={handleChange('password')} required
-                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f0f6fc', padding: '0.85rem 0.75rem', fontSize: '0.95rem' }} />
+            <div style={inputContainerStyle}>
+              <FiLock color="#64748b" size={16} />
+              <input type="password" placeholder="Create a password (min 6 characters)" value={formData.password} onChange={handleChange('password')} required style={inputStyle} />
             </div>
           </div>
 
           {/* Confirm Password */}
-          <div style={{ marginBottom: '1.5rem' }}>
-            <label style={{ display: 'block', color: '#c9d1d9', fontSize: '0.85rem', marginBottom: '0.4rem', fontWeight: 500 }}>
+          <div style={{ marginBottom: '1.75rem' }}>
+            <label style={labelStyle}>
               Confirm Password <span style={{ color: '#f85149' }}>*</span>
             </label>
-            <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', border: '1px solid rgba(48, 54, 61, 0.8)', padding: '0 1rem' }}>
-              <FiLock color="#8b949e" />
-              <input type="password" placeholder="Re-enter your password" value={formData.confirmPassword} onChange={handleChange('confirmPassword')} required
-                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f0f6fc', padding: '0.85rem 0.75rem', fontSize: '0.95rem' }} />
+            <div style={inputContainerStyle}>
+              <FiLock color="#64748b" size={16} />
+              <input type="password" placeholder="Re-enter your password" value={formData.confirmPassword} onChange={handleChange('confirmPassword')} required style={inputStyle} />
             </div>
           </div>
 
           <button type="submit" disabled={loading}
-            style={{ width: '100%', padding: '0.85rem', borderRadius: '10px', border: 'none', background: 'linear-gradient(135deg, #06b6d4, #0891b2)', color: '#fff', fontSize: '1rem', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.7 : 1 }}>
+            style={{
+              width: '100%', padding: '0.9375rem', borderRadius: '12px', border: 'none',
+              background: 'linear-gradient(135deg, #38bdf8, #0ea5e9)', color: '#fff',
+              fontSize: '1rem', fontWeight: 700, cursor: loading ? 'not-allowed' : 'pointer',
+              opacity: loading ? 0.7 : 1, boxShadow: '0 4px 16px rgba(56, 189, 248, 0.3)',
+              transition: 'all 0.3s'
+            }}>
             {loading ? 'Creating Account...' : 'Create Account'}
           </button>
         </form>
 
-        <p style={{ textAlign: 'center', color: '#8b949e', marginTop: '1.5rem', fontSize: '0.85rem' }}>
-          Already have an account? <Link to="/login" style={{ color: '#06b6d4', textDecoration: 'none', fontWeight: 500 }}>Sign In</Link>
+        <p style={{ textAlign: 'center', color: '#64748b', marginTop: '1.5rem', fontSize: '0.875rem' }}>
+          Already have an account? <Link to="/login" style={{ color: '#38bdf8', textDecoration: 'none', fontWeight: 600 }}>Sign In</Link>
         </p>
       </div>
     </div>
