@@ -17,13 +17,13 @@ router.get('/:id/assignments', departmentController.getDepartmentAssignments);
 // GET /api/departments/:id/workers — Workers in a department
 router.get('/:id/workers', departmentController.getDepartmentWorkers);
 
-// POST /api/departments/:id/workers — Add worker to department (admin OR dept_head)
+// POST /api/departments/:id/workers — Add worker to department (admin or dept_head)
 router.post('/:id/workers', authMiddleware, staffMiddleware, departmentController.addWorker);
 
-// PATCH /api/departments/workers/:id — Update worker (admin OR dept_head)
+// PATCH /api/departments/workers/:id — Update worker (admin or dept_head)
 router.patch('/workers/:id', authMiddleware, staffMiddleware, departmentController.updateWorker);
 
-// DELETE /api/departments/workers/:id — Remove worker (admin OR dept_head)
+// DELETE /api/departments/workers/:id — Remove worker (admin or dept_head)
 router.delete('/workers/:id', authMiddleware, staffMiddleware, departmentController.deleteWorker);
 
 // POST /api/departments/:id/assignments — Manually assign a complaint (admin or dept_head)

@@ -49,7 +49,6 @@ export const complaintsAPI = {
   rejectResolution: (id, data) => api.post(`/complaints/${id}/reject-resolution`, data),
   getDuplicates: (id) => api.get(`/complaints/${id}/duplicates`),
   getNearby: (params) => api.get('/complaints/nearby', { params }),
-  delete: (id) => api.delete(`/complaints/${id}`),
 };
 
 // ==================== ANALYTICS ====================
@@ -99,8 +98,6 @@ export const adminAPI = {
   sendMessage: (data) => api.post('/admin/message', data),
   getDisasterAlerts: () => api.get('/admin/disaster-alerts'),
   escalateComplaint: (id) => api.post(`/admin/escalate/${id}`),
-  getNotifications: () => api.get('/admin/notifications'),
-  exportComplaints: (params) => api.get('/admin/export', { params, responseType: 'blob' }),
 };
 
 export default api;

@@ -155,7 +155,7 @@ exports.createComplaint = async (req, res, next) => {
         ai_detected_labels: detectedLabels,
         priority_score: isEmergency ? Math.max(priorityScore, 0.95) : priorityScore,
         duplicate_of: duplicateOf,
-        status: duplicateOf ? 'duplicate' : 'submitted'
+        status: duplicateOf ? 'duplicate' : (isEmergency ? 'escalated' : 'submitted')
       })
       .select()
       .single();
@@ -199,7 +199,7 @@ exports.getComplaints = async (req, res, next) => {
   try {
     const {
       page = 1, limit = 20,
-      status, category, severity, department_id,
+      status, category, severity, department_id, user_id,
       sort_by = 'created_at', order = 'desc'
     } = req.query;
 
@@ -207,7 +207,7 @@ exports.getComplaints = async (req, res, next) => {
 
     let query = supabaseAdmin
       .from('complaints')
-      .select('*, departments(name, code), profiles(full_name, email)', { count: 'exact' })
+      .select('*, departments(name, code)', { count: 'exact' })
       .order(sort_by, { ascending: order === 'asc' })
       .range(offset, offset + parseInt(limit) - 1);
 
@@ -215,6 +215,7 @@ exports.getComplaints = async (req, res, next) => {
     if (category) query = query.eq('category', category);
     if (severity) query = query.eq('severity', severity);
     if (department_id) query = query.eq('department_id', department_id);
+    if (user_id) query = query.eq('user_id', user_id);
 
     const { data, error, count } = await query;
 

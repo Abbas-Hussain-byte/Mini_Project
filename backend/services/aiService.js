@@ -83,51 +83,17 @@ async function analyzeComplaint({ title, description, imageUrls, videoUrl, latit
       }
     }
 
-    // 2. Video analysis — download video and send to /ml/analyze-video
+    // 2. Video analysis
     if (videoUrl) {
       try {
-        // Download the video file from the storage URL
-        const videoResponse = await axios.get(videoUrl, {
-          responseType: 'arraybuffer',
-          timeout: 30000
-        });
+        const videoResponse = await axios.post(`${ML_URL}/ml/analyze-image`, {
+          image_url: videoUrl
+        }, { timeout: 45000 });
 
-        const formData = new FormData();
-        formData.append('video', Buffer.from(videoResponse.data), {
-          filename: 'video.mp4',
-          contentType: 'video/mp4'
-        });
-
-        const mlVideoResponse = await axios.post(`${ML_URL}/ml/analyze-video`, formData, {
-          headers: formData.getHeaders(),
-          timeout: 60000,
-          maxContentLength: 50 * 1024 * 1024
-        });
-
-        if (mlVideoResponse.data) {
-          result.analysis.videoDetections = [];
-          const agg = mlVideoResponse.data.aggregated;
-
-          // Extract detections from all frames
-          if (mlVideoResponse.data.frame_results) {
-            for (const fr of mlVideoResponse.data.frame_results) {
-              if (fr.detections) {
-                result.analysis.videoDetections.push(...fr.detections);
-              }
-            }
-          }
-
-          const videoLabels = result.analysis.videoDetections.map(d => d.label);
+        if (videoResponse.data && videoResponse.data.detections) {
+          result.analysis.videoDetections = videoResponse.data.detections;
+          const videoLabels = videoResponse.data.detections.map(d => d.label);
           result.detectedLabels = [...new Set([...result.detectedLabels, ...videoLabels])];
-
-          // If no image detections but video has detections, use video results
-          if (result.detectedLabels.length === 0 && agg && agg.top_label) {
-            result.category = agg.top_label;
-            result.analysis.category = agg.top_label;
-          }
-
-          result.analysis.framesAnalyzed = mlVideoResponse.data.frames_analyzed;
-          result.analysis.videoSeverity = agg?.severity || 'medium';
         }
       } catch (err) {
         console.warn('Video analysis failed:', err.message);
@@ -177,8 +143,7 @@ async function analyzeComplaint({ title, description, imageUrls, videoUrl, latit
     // 5. Calculate combined severity — take the MAX of all severity sources
     const imageSev = SEVERITY_RANK[result.analysis.imageSeverity] || 1;
     const textSev = SEVERITY_RANK[result.analysis.textSeverity] || 1;
-    const videoSev = SEVERITY_RANK[result.analysis.videoSeverity] || 1;
-    const combinedSev = Math.max(imageSev, textSev, videoSev);
+    const combinedSev = Math.max(imageSev, textSev);
     result.severity = RANK_TO_SEVERITY[Math.min(combinedSev, 4)] || 'medium';
 
     // 6. Calculate priority score
@@ -186,20 +151,6 @@ async function analyzeComplaint({ title, description, imageUrls, videoUrl, latit
 
   } catch (err) {
     console.error('AI analysis pipeline error:', err.message);
-  }
-
-  // 7. Fix generic titles/descriptions — NEVER return "Civic Issue Reported" or "image submission"
-  const GENERIC_TITLES = ['civic issue reported', 'image submission', 'civic issue detected via image analysis'];
-  if (GENERIC_TITLES.includes((result.title || '').toLowerCase().trim())) {
-    const cat = result.category || result.analysis?.category || result.analysis?.textCategory || 'other';
-    const catLabel = cat.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    result.title = `${catLabel} Issue Reported`;
-  }
-  const GENERIC_DESCS = ['', 'image-based complaint', 'civic issue detected via image analysis.', 'civic issue detected via image analysis'];
-  if (GENERIC_DESCS.includes((result.description || '').toLowerCase().trim())) {
-    const cat = result.category || 'civic';
-    const catLabel = cat.replace(/_/g, ' ');
-    result.description = `A ${catLabel} issue has been detected and reported. AI analysis has been applied to categorize and prioritize this complaint.`;
   }
 
   return result;
@@ -223,11 +174,18 @@ function calculatePriority(severity, analysis) {
   // New formula: category danger is weighted highest (35%)
   // This ensures electric wires (0.95) gets very different score from littering (0.20)
   const priorityScore = (
-    0.35 * categoryDanger +
-    0.25 * hazardScore +
-    0.20 * textScore +
-    0.10 * recencyScore +
-    0.10 * confidence
+//     0.35 * categoryDanger +
+//     0.25 * hazardScore +
+//     0.20 * textScore +
+//     0.10 * recencyScore +
+//     0.10 * confidence
+    
+    0.35 * hazardScore +
+    0.25 * textScore +
+    0.15 * (analysis.confidence || 0.5) +
+    0.15 * recencyScore +
+    0.10 * 0.5
+
   );
 
   return parseFloat(Math.min(priorityScore, 1.0).toFixed(4));

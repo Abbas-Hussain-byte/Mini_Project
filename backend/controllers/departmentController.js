@@ -347,12 +347,10 @@ exports.assignWorkersToComplaint = async (req, res, next) => {
     // Get or create assignment for this complaint
     let { data: assignment } = await supabaseAdmin
       .from('department_assignments')
-      .select('id, workers_assigned')
+      .select('id, workers_assigned, assigned_worker_ids')
       .eq('complaint_id', complaintId)
       .eq('department_id', departmentId)
       .single();
-
-    const workerIdStr = worker_ids.join(',');
 
     if (!assignment) {
       // Create assignment if doesn't exist
@@ -364,7 +362,7 @@ exports.assignWorkersToComplaint = async (req, res, next) => {
           assignment_reason: 'Workers assigned manually',
           assigned_by: 'staff',
           workers_assigned: validWorkers.length,
-          notes: `worker_ids:${workerIdStr}`,
+          assigned_worker_ids: worker_ids,
           status: 'acknowledged'
         })
         .select()
@@ -378,14 +376,14 @@ exports.assignWorkersToComplaint = async (req, res, next) => {
         .from('department_assignments')
         .update({
           workers_assigned: validWorkers.length,
-          notes: `worker_ids:${workerIdStr}`
+          assigned_worker_ids: worker_ids
         })
         .eq('id', assignment.id);
 
       if (updateErr) return res.status(500).json({ error: updateErr.message });
     }
 
-    // Update worker status to on_duty
+    // Update worker active_assignments count
     for (const wid of worker_ids) {
       await supabaseAdmin
         .from('department_workers')
@@ -393,7 +391,7 @@ exports.assignWorkersToComplaint = async (req, res, next) => {
         .eq('id', wid);
     }
 
-    // Update complaint status to assigned
+    // Update complaint status to assigned/in_progress
     await supabaseAdmin
       .from('complaints')
       .update({ status: 'assigned', department_id: departmentId, updated_at: new Date().toISOString() })
@@ -414,33 +412,22 @@ exports.getComplaintWorkers = async (req, res, next) => {
   try {
     const { id: departmentId, complaintId } = req.params;
 
-    // Get assignment for this complaint and parse worker_ids from notes
+    // Get assignment for this complaint
     const { data: assignment } = await supabaseAdmin
       .from('department_assignments')
-      .select('id, workers_assigned, notes')
+      .select('id, workers_assigned, assigned_worker_ids')
       .eq('complaint_id', complaintId)
       .eq('department_id', departmentId)
       .single();
 
-    if (!assignment || !assignment.notes) {
-      return res.json({ workers: [], count: 0 });
-    }
-
-    // Parse worker_ids from notes field (format: "worker_ids:uuid1,uuid2,...")
-    let workerIds = [];
-    const notesStr = assignment.notes || '';
-    if (notesStr.startsWith('worker_ids:')) {
-      workerIds = notesStr.replace('worker_ids:', '').split(',').filter(Boolean);
-    }
-
-    if (workerIds.length === 0) {
+    if (!assignment || !assignment.assigned_worker_ids || assignment.assigned_worker_ids.length === 0) {
       return res.json({ workers: [], count: 0 });
     }
 
     const { data: workers } = await supabaseAdmin
       .from('department_workers')
       .select('id, name, phone, role, status')
-      .in('id', workerIds);
+      .in('id', assignment.assigned_worker_ids);
 
     res.json({ workers: workers || [], count: (workers || []).length });
   } catch (err) { next(err); }
