@@ -3,11 +3,13 @@ CivicPulse — YOLO Fine-Tuning on Kaggle Urban Issues Dataset
 Handles the nested ClassName/ClassName/split/images structure,
 remaps labels to a unified 10-class scheme, and trains with augmentation.
 
-Supports YOLOv26n (default, best accuracy) or YOLOv11n/YOLOv11m.
-Includes class balancing via oversampling minority classes.
+Optimized for RTX 3050 Laptop GPU (4GB VRAM):
+  - batch=8, amp=True (FP16), cache='disk'
+  - 80 epochs with patience=20 for convergence
+  - max_per_class=500 to balance dataset
 
 Usage:
-    python train_yolo.py                          # Full training (50 epochs, YOLOv26n)
+    python train_yolo.py                          # Full training (80 epochs, yolo11n)
     python train_yolo.py --model yolo11m.pt        # Use YOLOv11m instead
     python train_yolo.py --epochs 5 --dry-run      # Quick test
 """
@@ -288,26 +290,25 @@ def train_yolo(args):
     
     from ultralytics import YOLO
     
-    # Model selection: YOLOv26n (best accuracy) > YOLOv11m > YOLOv11n
+    # Model selection: YOLOv11n (best for 4GB VRAM) or YOLOv11m
     model_file = args.model
     last_ckpt = os.path.join(ML_DIR, 'runs', 'yolo-urban', 'weights', 'last.pt')
     
     if args.resume and os.path.exists(last_ckpt):
-        print(f"📦 Resuming from checkpoint: {last_ckpt}")
+        print(f"Resuming from checkpoint: {last_ckpt}")
         model = YOLO(last_ckpt)
     else:
         # Check for model in ML_DIR first, then let ultralytics download
         local_model = os.path.join(ML_DIR, model_file)
         if os.path.exists(local_model):
-            print(f"📥 Loading {model_file} from local: {local_model}")
+            print(f"Loading {model_file} from local: {local_model}")
             model = YOLO(local_model)
         else:
-            print(f"📥 Loading {model_file} (will download if needed)...")
+            print(f"Loading {model_file} (will download if needed)...")
             model = YOLO(model_file)
     
     # ========================================
-    # Augmentation config (from reference notebook)
-    # These are CRITICAL for accuracy!
+    # Augmentation config — tuned for accuracy
     # ========================================
     augmentation = {
         'hsv_h': 0.015,     # Hue augmentation
@@ -324,15 +325,23 @@ def train_yolo(args):
         'perspective': 0.0001,  # Very slight perspective
     }
     
-    # Training settings
-    print(f"\n🚀 Starting training:")
+    # ========================================
+    # RTX 3050 4GB VRAM Optimization Notes:
+    #   batch=8    : fits 640px images in 4GB with FP16
+    #   amp=True   : FP16 mixed precision, halves VRAM, 30-40% faster
+    #   cache=disk : caches preprocessed images, faster data loading
+    #   workers=2  : Windows-safe, avoids multiprocessing issues
+    # ========================================
+    
+    print(f"\nStarting training (RTX 3050 4GB optimized):")
     print(f"   Model: {model_file}")
     print(f"   Epochs: {args.epochs}")
     print(f"   Image size: {args.imgsz}")
     print(f"   Batch size: {args.batch}")
+    print(f"   AMP (FP16): True")
+    print(f"   Cache: disk")
     print(f"   Device: {'cuda' if args.device == '0' else 'cpu'}")
     print(f"   Data: {yaml_path}")
-    print(f"   Augmentation: mosaic={augmentation['mosaic']}, mixup={augmentation['mixup']}, fliplr={augmentation['fliplr']}")
     print()
     
     results = model.train(
@@ -341,23 +350,25 @@ def train_yolo(args):
         imgsz=args.imgsz,
         batch=args.batch,
         device=args.device,
-        patience=15,           # More patience for better convergence
+        patience=20,           # More patience — don't stop early on noisy loss
         save=True,
-        save_period=5,
+        save_period=10,        # Save checkpoint every 10 epochs
         project=os.path.join(ML_DIR, 'runs'),
         name='yolo-urban',
         exist_ok=True,
         pretrained=True,
         optimizer='AdamW',
-        lr0=0.01,              # Higher initial LR (notebook uses 0.01)
+        lr0=0.01,              # Higher initial LR for strong convergence
         lrf=0.01,              # Final LR fraction
-        warmup_epochs=5,       # More warmup for stable training
+        warmup_epochs=5,       # Warmup for stable training
         cos_lr=True,           # Cosine LR schedule
-        cls=2.0,               # CRITICAL: Increase classification loss weight
+        cls=2.0,               # Boost classification loss weight
         box=7.5,               # Standard box loss weight
         verbose=True,
         workers=2,             # Windows-safe worker count
-        close_mosaic=10,       # Disable mosaic for last 10 epochs (better fine detail)
+        close_mosaic=15,       # Disable mosaic for last 15 epochs (finer detail learning)
+        amp=True,              # FP16 mixed precision — CRITICAL for 4GB VRAM
+        cache='disk',          # Cache images to disk for faster data loading
         # Augmentation parameters
         **augmentation,
     )
@@ -394,12 +405,12 @@ def train_yolo(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train YOLO on Urban Issues Dataset')
-    parser.add_argument('--model', type=str, default='yolo26n.pt', help='YOLO model file (default: yolo26n.pt)')
-    parser.add_argument('--epochs', type=int, default=50, help='Training epochs (default: 50)')
+    parser.add_argument('--model', type=str, default='yolo11n.pt', help='YOLO model file (default: yolo11n.pt)')
+    parser.add_argument('--epochs', type=int, default=80, help='Training epochs (default: 80)')
     parser.add_argument('--imgsz', type=int, default=640, help='Image size (default: 640 for best accuracy)')
-    parser.add_argument('--batch', type=int, default=16, help='Batch size (default: 16, reduce if OOM)')
+    parser.add_argument('--batch', type=int, default=8, help='Batch size (default: 8 for RTX 3050 4GB)')
     parser.add_argument('--device', type=str, default='0', help='Device: cpu or 0 for GPU')
-    parser.add_argument('--max_per_class', type=int, default=None, help='Subset dataset (None = use full dataset)')
+    parser.add_argument('--max_per_class', type=int, default=500, help='Max images per class per split (default: 500, balances dataset)')
     parser.add_argument('--resume', action='store_true', help='Resume from last checkpoint')
     parser.add_argument('--dry-run', action='store_true', help='Only prepare dataset, skip training')
     
