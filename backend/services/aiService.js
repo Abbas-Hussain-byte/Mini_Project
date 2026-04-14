@@ -1,4 +1,4 @@
-const axios = require('axios');
+﻿const axios = require('axios');
 const FormData = require('form-data');
 const { YOLO_LABEL_MAP, CATEGORY_DANGER_SCORE } = require('../utils/constants');
 
@@ -83,17 +83,51 @@ async function analyzeComplaint({ title, description, imageUrls, videoUrl, latit
       }
     }
 
-    // 2. Video analysis
+    // 2. Video analysis ΓÇö download video and send to /ml/analyze-video
     if (videoUrl) {
       try {
-        const videoResponse = await axios.post(`${ML_URL}/ml/analyze-image`, {
-          image_url: videoUrl
-        }, { timeout: 45000 });
+        // Download the video file from the storage URL
+        const videoResponse = await axios.get(videoUrl, {
+          responseType: 'arraybuffer',
+          timeout: 30000
+        });
 
-        if (videoResponse.data && videoResponse.data.detections) {
-          result.analysis.videoDetections = videoResponse.data.detections;
-          const videoLabels = videoResponse.data.detections.map(d => d.label);
+        const formData = new FormData();
+        formData.append('video', Buffer.from(videoResponse.data), {
+          filename: 'video.mp4',
+          contentType: 'video/mp4'
+        });
+
+        const mlVideoResponse = await axios.post(`${ML_URL}/ml/analyze-video`, formData, {
+          headers: formData.getHeaders(),
+          timeout: 60000,
+          maxContentLength: 50 * 1024 * 1024
+        });
+
+        if (mlVideoResponse.data) {
+          result.analysis.videoDetections = [];
+          const agg = mlVideoResponse.data.aggregated;
+
+          // Extract detections from all frames
+          if (mlVideoResponse.data.frame_results) {
+            for (const fr of mlVideoResponse.data.frame_results) {
+              if (fr.detections) {
+                result.analysis.videoDetections.push(...fr.detections);
+              }
+            }
+          }
+
+          const videoLabels = result.analysis.videoDetections.map(d => d.label);
           result.detectedLabels = [...new Set([...result.detectedLabels, ...videoLabels])];
+
+          // If no image detections but video has detections, use video results
+          if (result.detectedLabels.length === 0 && agg && agg.top_label) {
+            result.category = agg.top_label;
+            result.analysis.category = agg.top_label;
+          }
+
+          result.analysis.framesAnalyzed = mlVideoResponse.data.frames_analyzed;
+          result.analysis.videoSeverity = agg?.severity || 'medium';
         }
       } catch (err) {
         console.warn('Video analysis failed:', err.message);
@@ -140,10 +174,11 @@ async function analyzeComplaint({ title, description, imageUrls, videoUrl, latit
       console.warn('Embedding generation failed:', err.message);
     }
 
-    // 5. Calculate combined severity — take the MAX of all severity sources
+    // 5. Calculate combined severity ΓÇö take the MAX of all severity sources
     const imageSev = SEVERITY_RANK[result.analysis.imageSeverity] || 1;
     const textSev = SEVERITY_RANK[result.analysis.textSeverity] || 1;
-    const combinedSev = Math.max(imageSev, textSev);
+    const videoSev = SEVERITY_RANK[result.analysis.videoSeverity] || 1;
+    const combinedSev = Math.max(imageSev, textSev, videoSev);
     result.severity = RANK_TO_SEVERITY[Math.min(combinedSev, 4)] || 'medium';
 
     // 6. Calculate priority score
@@ -164,7 +199,7 @@ function calculatePriority(severity, analysis) {
   const textScore = textSev / 4;
   const recencyScore = 1.0;
 
-  // Category-based danger score — the KEY differentiator
+  // Category-based danger score ΓÇö the KEY differentiator
   const category = analysis.category || analysis.textCategory || 'other';
   const categoryDanger = CATEGORY_DANGER_SCORE[category] || 0.30;
 

@@ -1,10 +1,10 @@
-const { supabaseAdmin } = require('../models/supabaseClient');
+﻿const { supabaseAdmin } = require('../models/supabaseClient');
 const { analyzeComplaint } = require('../services/aiService');
 const { routeToDepartment } = require('../services/departmentRoutingService');
 const { runClustering } = require('../services/clusteringService');
 
 /**
- * POST /api/complaints — Create a new complaint
+ * POST /api/complaints ΓÇö Create a new complaint
  * Supports modes: 'image_only', 'image_text', 'text_only'
  */
 exports.createComplaint = async (req, res, next) => {
@@ -83,7 +83,7 @@ exports.createComplaint = async (req, res, next) => {
         aiDescription = analysisResult.description || aiDescription;
       }
     } catch (aiErr) {
-      console.warn('⚠️ AI analysis failed, proceeding with manual data:', aiErr.message);
+      console.warn('ΓÜá∩╕Å AI analysis failed, proceeding with manual data:', aiErr.message);
     }
 
     // 3. Check for duplicates before inserting
@@ -132,7 +132,7 @@ exports.createComplaint = async (req, res, next) => {
           .eq('id', original.id);
       }
     } catch (dupErr) {
-      console.warn('⚠️ Duplicate check failed:', dupErr.message);
+      console.warn('ΓÜá∩╕Å Duplicate check failed:', dupErr.message);
     }
 
     // 4. Override severity for emergencies
@@ -155,7 +155,7 @@ exports.createComplaint = async (req, res, next) => {
         ai_detected_labels: detectedLabels,
         priority_score: isEmergency ? Math.max(priorityScore, 0.95) : priorityScore,
         duplicate_of: duplicateOf,
-        status: duplicateOf ? 'duplicate' : (isEmergency ? 'escalated' : 'submitted')
+        status: duplicateOf ? 'duplicate' : 'submitted'
       })
       .select()
       .single();
@@ -167,12 +167,12 @@ exports.createComplaint = async (req, res, next) => {
       try {
         await routeToDepartment(complaint);
       } catch (deptErr) {
-        console.warn('⚠️ Department routing failed:', deptErr.message);
+        console.warn('ΓÜá∩╕Å Department routing failed:', deptErr.message);
       }
     }
 
     // 6. Trigger clustering update (async, non-blocking)
-    runClustering().catch(err => console.warn('⚠️ Clustering update failed:', err.message));
+    runClustering().catch(err => console.warn('ΓÜá∩╕Å Clustering update failed:', err.message));
 
     // 6. Fetch the updated complaint with department info
     const { data: fullComplaint } = await supabaseAdmin
@@ -183,7 +183,7 @@ exports.createComplaint = async (req, res, next) => {
 
     res.status(201).json({
       message: duplicateOf
-        ? 'Complaint linked as duplicate — original priority boosted!'
+        ? 'Complaint linked as duplicate ΓÇö original priority boosted!'
         : 'Complaint submitted successfully',
       complaint: fullComplaint,
       duplicate: duplicateInfo,
@@ -193,7 +193,7 @@ exports.createComplaint = async (req, res, next) => {
 };
 
 /**
- * GET /api/complaints — List complaints with pagination & filters
+ * GET /api/complaints ΓÇö List complaints with pagination & filters
  */
 exports.getComplaints = async (req, res, next) => {
   try {
@@ -234,7 +234,7 @@ exports.getComplaints = async (req, res, next) => {
 };
 
 /**
- * GET /api/complaints/:id — Single complaint detail
+ * GET /api/complaints/:id ΓÇö Single complaint detail
  */
 exports.getComplaintById = async (req, res, next) => {
   try {
@@ -257,7 +257,7 @@ exports.getComplaintById = async (req, res, next) => {
 };
 
 /**
- * PATCH /api/complaints/:id — Update complaint status (admin/dept_head)
+ * PATCH /api/complaints/:id ΓÇö Update complaint status (admin/dept_head)
  */
 exports.updateComplaint = async (req, res, next) => {
   try {
@@ -343,13 +343,13 @@ exports.updateComplaint = async (req, res, next) => {
       }
     }
 
-    console.log(`✅ Complaint ${req.params.id} updated: ${existing.status} → ${status} by ${userRole}`);
+    console.log(`Γ£à Complaint ${req.params.id} updated: ${existing.status} ΓåÆ ${status} by ${userRole}`);
     res.json({ message: 'Complaint updated', complaint: data });
   } catch (err) { next(err); }
 };
 
 /**
- * POST /api/complaints/:id/verify — Admin verifies resolution
+ * POST /api/complaints/:id/verify ΓÇö Admin verifies resolution
  */
 exports.verifyResolution = async (req, res, next) => {
   try {
@@ -392,7 +392,7 @@ exports.verifyResolution = async (req, res, next) => {
 };
 
 /**
- * POST /api/complaints/:id/reject-resolution — Admin rejects dept resolution
+ * POST /api/complaints/:id/reject-resolution ΓÇö Admin rejects dept resolution
  */
 exports.rejectResolution = async (req, res, next) => {
   try {
@@ -432,12 +432,12 @@ exports.rejectResolution = async (req, res, next) => {
         comment: `Resolution REJECTED by admin: ${notes}`
       });
 
-    res.json({ message: 'Resolution rejected — sent back for further work', complaint: data });
+    res.json({ message: 'Resolution rejected ΓÇö sent back for further work', complaint: data });
   } catch (err) { next(err); }
 };
 
 /**
- * GET /api/complaints/nearby — Complaints within radius
+ * GET /api/complaints/nearby ΓÇö Complaints within radius
  */
 exports.getNearbyComplaints = async (req, res, next) => {
   try {
@@ -464,7 +464,7 @@ exports.getNearbyComplaints = async (req, res, next) => {
 };
 
 /**
- * GET /api/complaints/:id/duplicates — Find potential duplicates
+ * GET /api/complaints/:id/duplicates ΓÇö Find potential duplicates
  */
 exports.getDuplicates = async (req, res, next) => {
   try {
@@ -495,7 +495,7 @@ exports.getDuplicates = async (req, res, next) => {
 };
 
 /**
- * DELETE /api/complaints/:id — Delete a complaint (admin only)
+ * DELETE /api/complaints/:id ΓÇö Delete a complaint (admin only)
  * Also removes related complaint_updates and department_assignments
  */
 exports.deleteComplaint = async (req, res, next) => {
