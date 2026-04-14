@@ -306,7 +306,14 @@ exports.updateComplaint = async (req, res, next) => {
       .select()
       .single();
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      if (error.message?.includes('complaints_status_check')) {
+        return res.status(400).json({
+          error: `Status "${status}" is not allowed by the database constraint. Please run this SQL in Supabase SQL Editor to fix: ALTER TABLE complaints DROP CONSTRAINT IF EXISTS complaints_status_check; ALTER TABLE complaints ADD CONSTRAINT complaints_status_check CHECK (status IN ('submitted','under_review','assigned','in_progress','pending_verification','resolved','rejected','duplicate','escalated'));`
+        });
+      }
+      return res.status(500).json({ error: error.message });
+    }
 
     // Create audit trail
     await supabaseAdmin

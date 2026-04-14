@@ -11,11 +11,59 @@ exports.getNotifications = async (req, res, next) => {
 };
 
 /**
- * GET /api/admin/export — Export complaints
+ * GET /api/admin/export — Export complaints as CSV or JSON
  */
 exports.exportComplaints = async (req, res, next) => {
   try {
-    res.json({ message: 'Export not implemented yet' });
+    const { format = 'csv', status, category, severity, department_id } = req.query;
+
+    let query = supabaseAdmin
+      .from('complaints')
+      .select('id, title, description, category, severity, status, priority_score, latitude, longitude, address, created_at, updated_at, resolved_at, departments(name, code)')
+      .order('created_at', { ascending: false });
+
+    if (status) query = query.eq('status', status);
+    if (category) query = query.eq('category', category);
+    if (severity) query = query.eq('severity', severity);
+    if (department_id) query = query.eq('department_id', department_id);
+
+    const { data: complaints, error } = await query;
+    if (error) return res.status(500).json({ error: error.message });
+
+    if (format === 'json') {
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename="civicpulse_complaints_${new Date().toISOString().split('T')[0]}.json"`);
+      return res.json({ complaints, exported_at: new Date().toISOString(), count: complaints.length });
+    }
+
+    // CSV format
+    const headers = ['ID', 'Title', 'Category', 'Severity', 'Status', 'Priority Score', 'Department', 'Address', 'Latitude', 'Longitude', 'Created At', 'Updated At', 'Resolved At', 'Description'];
+    const csvRows = [headers.join(',')];
+
+    for (const c of (complaints || [])) {
+      const row = [
+        c.id,
+        `"${(c.title || '').replace(/"/g, '""')}"`,
+        c.category || '',
+        c.severity || '',
+        c.status || '',
+        c.priority_score || 0,
+        `"${c.departments?.name || ''}"`,
+        `"${(c.address || '').replace(/"/g, '""')}"`,
+        c.latitude || '',
+        c.longitude || '',
+        c.created_at || '',
+        c.updated_at || '',
+        c.resolved_at || '',
+        `"${(c.description || '').replace(/"/g, '""').replace(/\n/g, ' ').slice(0, 200)}"`,
+      ];
+      csvRows.push(row.join(','));
+    }
+
+    const csv = csvRows.join('\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="civicpulse_complaints_${new Date().toISOString().split('T')[0]}.csv"`);
+    res.send(csv);
   } catch (err) { next(err); }
 };
 

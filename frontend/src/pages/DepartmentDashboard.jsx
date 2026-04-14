@@ -408,6 +408,14 @@ export default function DepartmentDashboard() {
                             <span style={{ fontSize: '0.75rem', padding: '2px 10px', borderRadius: '6px', background: 'rgba(100,116,139,0.1)', color: '#94a3b8', fontWeight: 500 }}>{c.category?.replace(/_/g, ' ')}</span>
                             {c.priority_score > 0 && <span style={{ fontSize: '0.75rem', padding: '2px 10px', borderRadius: '6px', background: 'rgba(168,85,247,0.1)', color: '#a855f7', fontWeight: 600 }}>Priority: {(c.priority_score * 100).toFixed(0)}%</span>}
                           </div>
+                          {/* Hashtag Tags for tracking */}
+                          <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                            {c.category && <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '4px', background: 'rgba(168,85,247,0.1)', color: '#c084fc', fontWeight: 500 }}>#{c.category}</span>}
+                            {c.severity && <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '4px', background: 'rgba(168,85,247,0.1)', color: '#c084fc', fontWeight: 500 }}>#{c.severity}</span>}
+                            {c.ai_detected_labels?.map((l, i) => (
+                              <span key={i} style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '4px', background: 'rgba(6,182,212,0.1)', color: '#22d3ee', fontWeight: 500 }}>#{l.replace(/\s+/g, '_')}</span>
+                            ))}
+                          </div>
 
                           {/* Meta info */}
                           <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', fontSize: '0.75rem', color: '#64748b' }}>

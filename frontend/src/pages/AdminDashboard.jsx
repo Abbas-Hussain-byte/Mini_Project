@@ -61,6 +61,31 @@ export default function AdminDashboard() {
   const [exportLoading, setExportLoading] = useState(false);
   const inputStyle = { width: '100%', padding: '0.7rem 0.85rem', borderRadius: '8px', border: '1px solid rgba(48,54,61,0.8)', background: 'rgba(0,0,0,0.3)', color: '#f0f6fc', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' };
 
+  // Generate hashtag from category/severity/status
+  const generateTags = (complaint) => {
+    const tags = [];
+    if (complaint.category) tags.push(`#${complaint.category.replace(/_/g, '_')}`);
+    if (complaint.severity) tags.push(`#${complaint.severity}`);
+    if (complaint.departments?.code) tags.push(`#${complaint.departments.code}`);
+    if (complaint.ai_detected_labels?.length > 0) {
+      complaint.ai_detected_labels.forEach(l => tags.push(`#${l.replace(/\s+/g, '_')}`));
+    }
+    return [...new Set(tags)];
+  };
+
+  // Department performance chart data
+  const deptChartData = {
+    labels: deptPerformance.map(d => d.name?.slice(0, 15) || 'Unknown'),
+    datasets: [{
+      label: 'Completion Rate (%)',
+      data: deptPerformance.map(d => d.completion_rate || d.completionRate || 0),
+      backgroundColor: 'rgba(6, 182, 212, 0.6)',
+      borderColor: '#06b6d4',
+      borderWidth: 1,
+      borderRadius: 4
+    }]
+  };
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -617,12 +642,18 @@ export default function AdminDashboard() {
                         </div>
                         {/* AI Detected Labels - always visible */}
                         {c.ai_detected_labels?.length > 0 && (
-                          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
                             {c.ai_detected_labels.map((label, idx) => (
                               <span key={idx} style={{ fontSize: '0.75rem', padding: '0.15rem 0.5rem', borderRadius: '4px', background: 'rgba(6,182,212,0.12)', color: '#22d3ee', fontWeight: 500, border: '1px solid rgba(6,182,212,0.2)' }}>🏷️ {label.replace(/_/g, ' ')}</span>
                             ))}
                           </div>
                         )}
+                        {/* Hashtag Tags */}
+                        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                          {generateTags(c).map((tag, idx) => (
+                            <span key={idx} style={{ fontSize: '0.75rem', padding: '0.15rem 0.5rem', borderRadius: '4px', background: 'rgba(168,85,247,0.1)', color: '#c084fc', fontWeight: 500 }}>{tag}</span>
+                          ))}
+                        </div>
                       </div>
                       {/* Action Buttons */}
                       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>
