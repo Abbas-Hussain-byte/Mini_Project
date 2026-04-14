@@ -29,10 +29,6 @@ router.get('/disaster-alerts', authMiddleware, adminMiddleware, adminController.
 // POST /api/admin/escalate/:id — Manually escalate a complaint
 router.post('/escalate/:id', authMiddleware, adminMiddleware, adminController.escalateComplaint);
 
-// GET /api/admin/disaster-alerts — Get disaster/escalated alerts
-router.get('/disaster-alerts', adminController.getDisasterAlerts);
 
-// POST /api/admin/escalate/:id — Manually escalate a complaint
-router.post('/escalate/:id', adminController.escalateComplaint);
 
 module.exports = router;

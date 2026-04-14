@@ -2,6 +2,24 @@ const { supabaseAdmin } = require('../models/supabaseClient');
 const { getOptimalAllocation, recalculatePriorities } = require('../services/prioritizationService');
 
 /**
+ * GET /api/admin/notifications — Role-aware alerts
+ */
+exports.getNotifications = async (req, res, next) => {
+  try {
+    res.json({ notifications: [] });
+  } catch (err) { next(err); }
+};
+
+/**
+ * GET /api/admin/export — Export complaints
+ */
+exports.exportComplaints = async (req, res, next) => {
+  try {
+    res.json({ message: 'Export not implemented yet' });
+  } catch (err) { next(err); }
+};
+
+/**
  * GET /api/admin/priorities — Budget-aware prioritized complaints (Knapsack DP)
  */
 exports.getPriorities = async (req, res, next) => {
