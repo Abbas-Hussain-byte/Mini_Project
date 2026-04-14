@@ -1,4 +1,4 @@
-﻿"""
+"""
 CivicPulse ML Service
 Flask API for AI inference: YOLOv11 hazard detection, zero-shot text classification,
 CLIP multimodal embeddings, and sentence embeddings.
@@ -93,7 +93,7 @@ SEVERITY_KEYWORDS = {
     'low': ['minor', 'cosmetic', 'faded', 'uneven', 'small', 'slightly', 'peeling'],
 }
 
-# Inherent minimum severity per category ΓÇö some issues are always dangerous
+# Inherent minimum severity per category — some issues are always dangerous
 CATEGORY_INHERENT_SEVERITY = {
     'damaged_electric_wires': 'high',
     'electricity': 'high',
@@ -126,23 +126,23 @@ PER_CLASS_CONF = {
     'fallen_trees': 0.15,
     'littering': 0.20,
     'vandalism': 0.20,
-    'dead_animal': 0.10,            # Hard to detect ΓÇö accept weaker signals
+    'dead_animal': 0.10,            # Hard to detect — accept weaker signals
     'damaged_concrete': 0.18,
-    'damaged_electric_wires': 0.10, # Hard to detect ΓÇö accept weaker signals
+    'damaged_electric_wires': 0.10, # Hard to detect — accept weaker signals
 }
 
 # Title templates for image-only mode
 LABEL_TITLES = {
-    'damaged_road': 'Damaged Road Surface Detected ΓÇö Requires Road Maintenance',
-    'pothole': 'Pothole Detected on Road ΓÇö Risk of Vehicle Damage',
-    'illegal_parking': 'Illegal Parking Violation ΓÇö Obstructing Traffic Flow',
-    'broken_road_sign': 'Broken/Missing Road Sign ΓÇö Traffic Safety Hazard',
-    'fallen_trees': 'Fallen Tree Blocking Area ΓÇö Urgent Clearance Needed',
-    'littering': 'Littering / Garbage Accumulation ΓÇö Sanitation Required',
-    'vandalism': 'Vandalism / Property Damage ΓÇö Law Enforcement Alert',
-    'dead_animal': 'Dead Animal on Road ΓÇö Biohazard Cleanup Needed',
-    'damaged_concrete': 'Damaged Concrete Structure ΓÇö Public Works Repair Needed',
-    'damaged_electric_wires': 'Damaged / Exposed Electric Wires ΓÇö Electrocution Risk',
+    'damaged_road': 'Damaged Road Surface Detected — Requires Road Maintenance',
+    'pothole': 'Pothole Detected on Road — Risk of Vehicle Damage',
+    'illegal_parking': 'Illegal Parking Violation — Obstructing Traffic Flow',
+    'broken_road_sign': 'Broken/Missing Road Sign — Traffic Safety Hazard',
+    'fallen_trees': 'Fallen Tree Blocking Area — Urgent Clearance Needed',
+    'littering': 'Littering / Garbage Accumulation — Sanitation Required',
+    'vandalism': 'Vandalism / Property Damage — Law Enforcement Alert',
+    'dead_animal': 'Dead Animal on Road — Biohazard Cleanup Needed',
+    'damaged_concrete': 'Damaged Concrete Structure — Public Works Repair Needed',
+    'damaged_electric_wires': 'Damaged / Exposed Electric Wires — Electrocution Risk',
 }
 
 # Detailed descriptions for image-only auto-generated complaints
@@ -163,7 +163,7 @@ LABEL_DESCRIPTIONS = {
 def load_yolo():
     """Load YOLOv11n model (fine-tuned > HF download > pretrained)"""
     if models['yolo'] is None:
-        print("≡ƒöä Loading YOLOv11n model...")
+        print("[*] Loading YOLOv11n model...")
         from ultralytics import YOLO
         # Check for fine-tuned model first
         finetuned_path = os.path.join(os.path.dirname(__file__), 'models', 'yolo-urban', 'best.pt')
@@ -188,23 +188,23 @@ def load_yolo():
                 if downloaded != dl_path and os.path.exists(downloaded):
                     import shutil
                     shutil.move(downloaded, dl_path)
-                print(f"   Γ£à Downloaded fine-tuned model to {dl_path}")
+                print(f"   [OK] Downloaded fine-tuned model to {dl_path}")
                 models['yolo'] = YOLO(dl_path)
             except Exception as hf_err:
-                print(f"   ΓÜá∩╕Å HF download failed ({hf_err}), using pretrained YOLOv11n")
+                print(f"   [WARN] HF download failed ({hf_err}), using pretrained YOLOv11n")
                 models['yolo'] = YOLO('yolo11n.pt')
-        print("Γ£à YOLOv11n loaded")
+        print("[OK] YOLOv11n loaded")
     return models['yolo']
 
 
 def load_text_classifier():
-    """Load text classifier ΓÇö fine-tuned DistilBERT if available, else zero-shot."""
+    """Load text classifier — fine-tuned DistilBERT if available, else zero-shot."""
     if models['text_classifier'] is None:
         finetuned_path = os.path.join(os.path.dirname(__file__), 'models', 'bert-civic', 'best_model')
         label_map_path = os.path.join(os.path.dirname(__file__), 'models', 'bert-civic', 'label_map.json')
         
         if os.path.exists(finetuned_path) and os.path.exists(label_map_path):
-            print(f"≡ƒöä Loading fine-tuned DistilBERT from: {finetuned_path}")
+            print(f"[*] Loading fine-tuned DistilBERT from: {finetuned_path}")
             from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
             import json
             
@@ -221,9 +221,9 @@ def load_text_classifier():
                 'tokenizer': tokenizer,
                 'id_to_category': {int(k): v for k, v in label_map['id_to_category'].items()},
             }
-            print("Γ£à Fine-tuned DistilBERT loaded (high accuracy mode)")
+            print("[OK] Fine-tuned DistilBERT loaded (high accuracy mode)")
         else:
-            print("≡ƒöä Loading DistilBERT-MNLI zero-shot classifier (~250MB)...")
+            print("[*] Loading DistilBERT-MNLI zero-shot classifier (~250MB)...")
             from transformers import pipeline
             models['text_classifier'] = {
                 'type': 'zeroshot',
@@ -233,28 +233,28 @@ def load_text_classifier():
                     device=-1  # CPU
                 ),
             }
-            print("Γ£à Zero-shot DistilBERT classifier loaded")
+            print("[OK] Zero-shot DistilBERT classifier loaded")
     return models['text_classifier']
 
 
 def load_clip():
     """Load CLIP model for multimodal embeddings"""
     if models['clip_model'] is None:
-        print("≡ƒöä Loading CLIP model...")
+        print("[*] Loading CLIP model...")
         from transformers import CLIPModel, CLIPProcessor
         models['clip_model'] = CLIPModel.from_pretrained('openai/clip-vit-base-patch32')
         models['clip_processor'] = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
-        print("Γ£à CLIP loaded")
+        print("[OK] CLIP loaded")
     return models['clip_model'], models['clip_processor']
 
 
 def load_sentence_model():
     """Load sentence-transformers for text embeddings (80MB, very fast)"""
     if models['sentence_model'] is None:
-        print("≡ƒöä Loading sentence-transformers (all-MiniLM-L6-v2)...")
+        print("[*] Loading sentence-transformers (all-MiniLM-L6-v2)...")
         from sentence_transformers import SentenceTransformer
         models['sentence_model'] = SentenceTransformer('all-MiniLM-L6-v2')
-        print("Γ£à Sentence model loaded")
+        print("[OK] Sentence model loaded")
     return models['sentence_model']
 
 
@@ -265,7 +265,7 @@ def download_image(url):
         response.raise_for_status()
         return Image.open(io.BytesIO(response.content)).convert('RGB')
     except Exception as e:
-        print(f"Γ¥î Image download failed: {e}")
+        print(f"[ERROR] Image download failed: {e}")
         return None
 
 
@@ -385,7 +385,7 @@ def analyze_image():
         })
 
     except Exception as e:
-        print(f"Γ¥î Image analysis error: {e}")
+        print(f"[ERROR] Image analysis error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -456,7 +456,7 @@ def classify_text():
             })
 
     except Exception as e:
-        print(f"Γ¥î Text classification error: {e}")
+        print(f"[ERROR] Text classification error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -548,7 +548,7 @@ def analyze_complete():
                     SEVERITY_RANK.get(cat_severity, 2)
                 )]
 
-        # 2. Text classification ΓÇö run on user text OR on YOLO-generated description
+        # 2. Text classification — run on user text OR on YOLO-generated description
         analysis_text = text if text else (result['description'] if result['detections'] else '')
         if analysis_text and len(analysis_text) > 5:
             try:
@@ -593,12 +593,12 @@ def analyze_complete():
                     'confidence': round(text_confidence, 4)
                 }
             except Exception as te:
-                print(f"ΓÜá∩╕Å Text classification in analyze-complete failed: {te}")
+                print(f"[WARN] Text classification in analyze-complete failed: {te}")
 
         return jsonify(result)
 
     except Exception as e:
-        print(f"Γ¥î Complete analysis error: {e}")
+        print(f"[ERROR] Complete analysis error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -657,7 +657,7 @@ def analyze_video():
         })
 
     except Exception as e:
-        print(f"Γ¥î Video analysis error: {e}")
+        print(f"[ERROR] Video analysis error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -671,7 +671,7 @@ def generate_embeddings():
 
         result = {}
 
-        # Text embedding (sentence-transformers ΓÇö very fast, 80MB)
+        # Text embedding (sentence-transformers — very fast, 80MB)
         if text:
             sentence_model = load_sentence_model()
             text_emb = sentence_model.encode(text)
@@ -698,12 +698,12 @@ def generate_embeddings():
                             (outputs.image_embeds[0].numpy() + outputs.text_embeds[0].numpy()) / 2
                         ).tolist()
             except Exception as e:
-                print(f"ΓÜá∩╕Å CLIP embedding failed: {e}")
+                print(f"[WARN] CLIP embedding failed: {e}")
 
         return jsonify(result)
 
     except Exception as e:
-        print(f"Γ¥î Embedding error: {e}")
+        print(f"[ERROR] Embedding error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -742,12 +742,12 @@ if __name__ == '__main__':
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
 
     print(f"""
-ΓòöΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòù
-Γòæ       CivicPulse ML Service              Γòæ
-Γòæ       Port: {port}                       Γòæ
-Γòæ       Models: Lazy-loaded on first use   Γòæ
-Γòæ       YOLO auto-install: DISABLED        Γòæ
-ΓòÜΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓò¥
++==========================================+
+|       CivicPulse ML Service              |
+|       Port: {port}                       |
+|       Models: Lazy-loaded on first use   |
+|       YOLO auto-install: DISABLED        |
++==========================================+
     """)
 
     app.run(host='0.0.0.0', port=port, debug=debug)

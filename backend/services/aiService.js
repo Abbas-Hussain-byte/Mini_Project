@@ -83,7 +83,7 @@ async function analyzeComplaint({ title, description, imageUrls, videoUrl, latit
       }
     }
 
-    // 2. Video analysis ΓÇö download video and send to /ml/analyze-video
+    // 2. Video analysis — download video and send to /ml/analyze-video
     if (videoUrl) {
       try {
         // Download the video file from the storage URL
@@ -174,7 +174,7 @@ async function analyzeComplaint({ title, description, imageUrls, videoUrl, latit
       console.warn('Embedding generation failed:', err.message);
     }
 
-    // 5. Calculate combined severity ΓÇö take the MAX of all severity sources
+    // 5. Calculate combined severity — take the MAX of all severity sources
     const imageSev = SEVERITY_RANK[result.analysis.imageSeverity] || 1;
     const textSev = SEVERITY_RANK[result.analysis.textSeverity] || 1;
     const videoSev = SEVERITY_RANK[result.analysis.videoSeverity] || 1;
@@ -199,7 +199,7 @@ function calculatePriority(severity, analysis) {
   const textScore = textSev / 4;
   const recencyScore = 1.0;
 
-  // Category-based danger score ΓÇö the KEY differentiator
+  // Category-based danger score — the KEY differentiator
   const category = analysis.category || analysis.textCategory || 'other';
   const categoryDanger = CATEGORY_DANGER_SCORE[category] || 0.30;
 

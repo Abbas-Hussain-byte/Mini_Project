@@ -95,13 +95,13 @@ export default function TrackComplaint() {
                     {/* Content */}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                        <span style={{ fontSize: '0.6875rem', color: '#38bdf8', fontWeight: 700, fontFamily: 'monospace', background: 'rgba(56, 189, 248, 0.08)', padding: '1px 6px', borderRadius: '4px' }}>#{shortId(c.id)}</span>
+                        <span style={{ fontSize: '0.8125rem', color: '#38bdf8', fontWeight: 700, fontFamily: 'monospace', background: 'rgba(56, 189, 248, 0.08)', padding: '1px 6px', borderRadius: '4px' }}>#{shortId(c.id)}</span>
                         <h3 style={{ color: '#f0f6fc', fontSize: '0.9375rem', fontWeight: 600, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</h3>
                       </div>
                       <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
-                        <span style={{ fontSize: '0.6875rem', padding: '2px 8px', borderRadius: '6px', background: statusInfo.color + '18', color: statusInfo.color, fontWeight: 600 }}>{statusInfo.label}</span>
-                        <span style={{ fontSize: '0.6875rem', padding: '2px 8px', borderRadius: '6px', background: (SEV_COLORS[c.severity] || '#64748b') + '18', color: SEV_COLORS[c.severity] || '#64748b', fontWeight: 600 }}>{c.severity}</span>
-                        {c.category && <span style={{ fontSize: '0.6875rem', padding: '2px 8px', borderRadius: '6px', background: 'rgba(100,116,139,0.1)', color: '#94a3b8', fontWeight: 500 }}>{c.category?.replace(/_/g, ' ')}</span>}
+                        <span style={{ fontSize: '0.8125rem', padding: '2px 8px', borderRadius: '6px', background: statusInfo.color + '18', color: statusInfo.color, fontWeight: 600 }}>{statusInfo.label}</span>
+                        <span style={{ fontSize: '0.8125rem', padding: '2px 8px', borderRadius: '6px', background: (SEV_COLORS[c.severity] || '#64748b') + '18', color: SEV_COLORS[c.severity] || '#64748b', fontWeight: 600 }}>{c.severity}</span>
+                        {c.category && <span style={{ fontSize: '0.8125rem', padding: '2px 8px', borderRadius: '6px', background: 'rgba(100,116,139,0.1)', color: '#94a3b8', fontWeight: 500 }}>{c.category?.replace(/_/g, ' ')}</span>}
                       </div>
                       <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.75rem', color: '#475569' }}>
                         <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><FiClock size={11} /> {new Date(c.created_at).toLocaleDateString()}</span>
@@ -137,20 +137,20 @@ export default function TrackComplaint() {
                       {/* Tracking Details */}
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.5rem', marginBottom: '0.875rem' }}>
                         <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.15)', borderRadius: '8px' }}>
-                          <p style={{ color: '#475569', fontSize: '0.6875rem', fontWeight: 600, margin: '0 0 0.125rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Tracking ID</p>
+                          <p style={{ color: '#475569', fontSize: '0.8125rem', fontWeight: 600, margin: '0 0 0.125rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Tracking ID</p>
                           <p style={{ color: '#38bdf8', fontSize: '0.8125rem', fontWeight: 700, fontFamily: 'monospace', margin: 0 }}>{shortId(c.id)}</p>
                         </div>
                         <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.15)', borderRadius: '8px' }}>
-                          <p style={{ color: '#475569', fontSize: '0.6875rem', fontWeight: 600, margin: '0 0 0.125rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Priority</p>
+                          <p style={{ color: '#475569', fontSize: '0.8125rem', fontWeight: 600, margin: '0 0 0.125rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Priority</p>
                           <p style={{ color: '#a855f7', fontSize: '0.8125rem', fontWeight: 600, margin: 0 }}>{(c.priority_score * 100).toFixed(0)}%</p>
                         </div>
                         <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.15)', borderRadius: '8px' }}>
-                          <p style={{ color: '#475569', fontSize: '0.6875rem', fontWeight: 600, margin: '0 0 0.125rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Department</p>
+                          <p style={{ color: '#475569', fontSize: '0.8125rem', fontWeight: 600, margin: '0 0 0.125rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Department</p>
                           <p style={{ color: '#e2e8f0', fontSize: '0.8125rem', fontWeight: 500, margin: 0 }}>{c.departments?.name || 'Pending'}</p>
                         </div>
                         {c.address && (
                           <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.15)', borderRadius: '8px', gridColumn: 'span 2' }}>
-                            <p style={{ color: '#475569', fontSize: '0.6875rem', fontWeight: 600, margin: '0 0 0.125rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Location</p>
+                            <p style={{ color: '#475569', fontSize: '0.8125rem', fontWeight: 600, margin: '0 0 0.125rem', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Location</p>
                             <p style={{ color: '#e2e8f0', fontSize: '0.8125rem', fontWeight: 500, margin: 0 }}>{c.address}</p>
                           </div>
                         )}
@@ -179,7 +179,7 @@ export default function TrackComplaint() {
                                 background: upd.comment?.includes('[ADMIN MESSAGE]') ? 'rgba(168,85,247,0.04)' : 'rgba(0,0,0,0.1)'
                               }}>
                                 <p style={{ color: '#cbd5e1', fontSize: '0.8125rem', margin: 0, fontWeight: 400 }}>{upd.comment?.replace('[ADMIN MESSAGE] ', '📩 ')}</p>
-                                <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.6875rem', color: '#475569', marginTop: '0.25rem' }}>
+                                <div style={{ display: 'flex', gap: '0.5rem', fontSize: '0.8125rem', color: '#475569', marginTop: '0.25rem' }}>
                                   <span>{upd.profiles?.full_name || 'System'}</span>
                                   <span>• {new Date(upd.created_at).toLocaleString()}</span>
                                   {upd.old_status && upd.new_status && (

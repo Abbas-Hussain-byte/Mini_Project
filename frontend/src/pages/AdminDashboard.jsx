@@ -336,7 +336,7 @@ export default function AdminDashboard() {
         <div style={{ display: 'flex', gap: '0.25rem', background: 'rgba(22, 27, 34, 0.9)', borderRadius: '12px', padding: '4px', marginBottom: '1.5rem', overflowX: 'auto', border: '1px solid rgba(48, 54, 61, 0.5)' }}>
           {TABS.map(tab => (
             <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.6rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 500, fontSize: '0.8rem', whiteSpace: 'nowrap',
+              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.6rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 500, fontSize: '0.9rem', whiteSpace: 'nowrap',
                 background: activeTab === tab.id ? 'rgba(6, 182, 212, 0.2)' : 'transparent',
                 color: activeTab === tab.id ? '#06b6d4' : '#8b949e' }}>
               {tab.icon} {tab.label}
@@ -367,7 +367,7 @@ export default function AdminDashboard() {
                 { label: 'Critical', value: sevData.critical || 0, color: '#f85149' },
               ].map((stat, i) => (
                 <div key={i} style={{ ...cardStyle, borderLeft: `3px solid ${stat.color}`, padding: '1rem' }}>
-                  <p style={{ color: '#8b949e', fontSize: '0.7rem', margin: '0 0 0.25rem' }}>{stat.label}</p>
+                  <p style={{ color: '#8b949e', fontSize: '0.8125rem', margin: '0 0 0.25rem' }}>{stat.label}</p>
                   <p style={{ color: '#f0f6fc', fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>{stat.value}</p>
                 </div>
               ))}
@@ -443,13 +443,13 @@ export default function AdminDashboard() {
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <p style={{ color: '#f0f6fc', fontSize: '0.85rem', margin: '0 0 0.2rem', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.title}</p>
                           <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.4rem', borderRadius: '3px', background: (STATUS_COLORS[c.status] || '#8b949e') + '15', color: STATUS_COLORS[c.status] || '#8b949e' }}>{c.status?.replace(/_/g, ' ')}</span>
-                            <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.4rem', borderRadius: '3px', background: (SEV_COLORS[c.severity] || '#8b949e') + '15', color: SEV_COLORS[c.severity] || '#8b949e' }}>{c.severity}</span>
-                            {c.category && <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.4rem', borderRadius: '3px', background: 'rgba(6,182,212,0.1)', color: '#06b6d4' }}>{c.category?.replace(/_/g, ' ')}</span>}
+                            <span style={{ fontSize: '0.75rem', padding: '0.1rem 0.4rem', borderRadius: '3px', background: (STATUS_COLORS[c.status] || '#8b949e') + '15', color: STATUS_COLORS[c.status] || '#8b949e' }}>{c.status?.replace(/_/g, ' ')}</span>
+                            <span style={{ fontSize: '0.75rem', padding: '0.1rem 0.4rem', borderRadius: '3px', background: (SEV_COLORS[c.severity] || '#8b949e') + '15', color: SEV_COLORS[c.severity] || '#8b949e' }}>{c.severity}</span>
+                            {c.category && <span style={{ fontSize: '0.75rem', padding: '0.1rem 0.4rem', borderRadius: '3px', background: 'rgba(6,182,212,0.1)', color: '#06b6d4' }}>{c.category?.replace(/_/g, ' ')}</span>}
                           </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexShrink: 0 }}>
-                          <span style={{ color: '#6e7681', fontSize: '0.7rem' }}>{new Date(c.created_at).toLocaleDateString()}</span>
+                          <span style={{ color: '#6e7681', fontSize: '0.8125rem' }}>{new Date(c.created_at).toLocaleDateString()}</span>
                           {expandedComplaint === c.id ? <FiChevronUp color="#8b949e" /> : <FiChevronDown color="#8b949e" />}
                         </div>
                       </div>
@@ -465,9 +465,9 @@ export default function AdminDashboard() {
                               ))}
                             </div>
                           )}
-                          {c.address && <p style={{ color: '#8b949e', fontSize: '0.7rem', margin: '0.3rem 0' }}>📍 {c.address}</p>}
-                          {c.departments?.name && <p style={{ color: '#06b6d4', fontSize: '0.7rem', margin: '0.3rem 0' }}>→ {c.departments.name}</p>}
-                          {c.priority_score > 0 && <p style={{ color: '#a855f7', fontSize: '0.7rem', margin: '0.3rem 0' }}>Priority: {(c.priority_score * 100).toFixed(0)}%</p>}
+                          {c.address && <p style={{ color: '#8b949e', fontSize: '0.8125rem', margin: '0.3rem 0' }}>📍 {c.address}</p>}
+                          {c.departments?.name && <p style={{ color: '#06b6d4', fontSize: '0.8125rem', margin: '0.3rem 0' }}>→ {c.departments.name}</p>}
+                          {c.priority_score > 0 && <p style={{ color: '#a855f7', fontSize: '0.8125rem', margin: '0.3rem 0' }}>Priority: {(c.priority_score * 100).toFixed(0)}%</p>}
                         </div>
                       )}
                     </div>
@@ -504,11 +504,11 @@ export default function AdminDashboard() {
                     <h4 style={{ color: '#f0f6fc', margin: '0 0 0.25rem', fontSize: '1rem' }}>{c.title}</h4>
                     <p style={{ color: '#8b949e', fontSize: '0.8rem', margin: '0 0 0.5rem' }}>{c.description?.slice(0, 150)}</p>
                     <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(248,81,73,0.2)', color: '#f85149' }}>ESCALATED</span>
-                      <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: (SEV_COLORS[c.severity] || '#8b949e') + '20', color: SEV_COLORS[c.severity] }}>{c.severity}</span>
-                      <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(139,148,158,0.1)', color: '#8b949e' }}>{c.category?.replace(/_/g, ' ')}</span>
-                      {c.departments?.name && <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(6,182,212,0.1)', color: '#06b6d4' }}>{c.departments.name}</span>}
-                      <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}>Priority: {c.priority_score?.toFixed(3)}</span>
+                      <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(248,81,73,0.2)', color: '#f85149' }}>ESCALATED</span>
+                      <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: (SEV_COLORS[c.severity] || '#8b949e') + '20', color: SEV_COLORS[c.severity] }}>{c.severity}</span>
+                      <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(139,148,158,0.1)', color: '#8b949e' }}>{c.category?.replace(/_/g, ' ')}</span>
+                      {c.departments?.name && <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(6,182,212,0.1)', color: '#06b6d4' }}>{c.departments.name}</span>}
+                      <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}>Priority: {c.priority_score?.toFixed(3)}</span>
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '0.4rem' }}>
@@ -538,8 +538,8 @@ export default function AdminDashboard() {
                   <div>
                     <h4 style={{ color: '#f0f6fc', margin: '0 0 0.25rem', fontSize: '0.95rem' }}>{c.title}</h4>
                     <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: (SEV_COLORS[c.severity] || '#8b949e') + '20', color: SEV_COLORS[c.severity] }}>{c.severity}</span>
-                      <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}>{c.hoursOverdue}hrs overdue</span>
+                      <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: (SEV_COLORS[c.severity] || '#8b949e') + '20', color: SEV_COLORS[c.severity] }}>{c.severity}</span>
+                      <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}>{c.hoursOverdue}hrs overdue</span>
                     </div>
                   </div>
                   <button onClick={async () => { await adminAPI.escalateComplaint(c.id); loadData(); }}
@@ -610,11 +610,11 @@ export default function AdminDashboard() {
                         <h3 style={{ color: '#f0f6fc', margin: '0 0 0.25rem', fontSize: '1rem' }}>{c.title}</h3>
                         <p style={{ color: '#8b949e', fontSize: '0.8rem', margin: '0 0 0.5rem' }}>{c.description?.slice(0, 120)}{c.description?.length > 120 ? '...' : ''}</p>
                         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: (STATUS_COLORS[c.status] || '#8b949e') + '20', color: STATUS_COLORS[c.status] || '#8b949e' }}>{c.status?.replace(/_/g, ' ')}</span>
-                          <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: (SEV_COLORS[c.severity] || '#8b949e') + '20', color: SEV_COLORS[c.severity] || '#8b949e' }}>{c.severity}</span>
-                          <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(139,148,158,0.1)', color: '#8b949e' }}>{c.category?.replace(/_/g, ' ')}</span>
-                          {c.departments?.name && <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(6,182,212,0.1)', color: '#06b6d4' }}>{c.departments.name}</span>}
-                          {c.priority_score > 0 && <span style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(168,85,247,0.1)', color: '#a855f7' }}>Score: {c.priority_score?.toFixed(3)}</span>}
+                          <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: (STATUS_COLORS[c.status] || '#8b949e') + '20', color: STATUS_COLORS[c.status] || '#8b949e' }}>{c.status?.replace(/_/g, ' ')}</span>
+                          <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: (SEV_COLORS[c.severity] || '#8b949e') + '20', color: SEV_COLORS[c.severity] || '#8b949e' }}>{c.severity}</span>
+                          <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(139,148,158,0.1)', color: '#8b949e' }}>{c.category?.replace(/_/g, ' ')}</span>
+                          {c.departments?.name && <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(6,182,212,0.1)', color: '#06b6d4' }}>{c.departments.name}</span>}
+                          {c.priority_score > 0 && <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(168,85,247,0.1)', color: '#a855f7' }}>Score: {c.priority_score?.toFixed(3)}</span>}
                         </div>
                       </div>
                       {/* Action Buttons */}
@@ -701,7 +701,7 @@ export default function AdminDashboard() {
                                 <span style={{ color: '#6e7681', fontSize: '0.75rem' }}>{upd.profiles?.full_name || 'System'}</span>
                                 <span style={{ color: '#6e7681', fontSize: '0.75rem' }}>• {new Date(upd.created_at).toLocaleString()}</span>
                                 {upd.old_status && upd.new_status && (
-                                  <span style={{ fontSize: '0.7rem', padding: '0.1rem 0.4rem', borderRadius: '3px', background: 'rgba(6,182,212,0.1)', color: '#06b6d4' }}>
+                                  <span style={{ fontSize: '0.8125rem', padding: '0.1rem 0.4rem', borderRadius: '3px', background: 'rgba(6,182,212,0.1)', color: '#06b6d4' }}>
                                     {upd.old_status.replace(/_/g, ' ')} → {upd.new_status.replace(/_/g, ' ')}
                                   </span>
                                 )}
@@ -723,7 +723,7 @@ export default function AdminDashboard() {
                       {(complaintUpdates[c.id] || []).map((upd, i) => (
                         <div key={i} style={{ padding: '0.4rem 0.6rem', marginBottom: '0.3rem', borderRadius: '6px', background: upd.comment?.startsWith('[ADMIN MESSAGE]') ? 'rgba(168,85,247,0.08)' : 'rgba(0,0,0,0.15)', borderLeft: `2px solid ${upd.comment?.startsWith('[ADMIN MESSAGE]') ? '#a855f7' : '#48535f'}` }}>
                           <p style={{ color: '#c9d1d9', fontSize: '0.8rem', margin: 0 }}>{upd.comment}</p>
-                          <p style={{ color: '#6e7681', fontSize: '0.65rem', margin: '0.15rem 0 0' }}>
+                          <p style={{ color: '#6e7681', fontSize: '0.8rem', margin: '0.15rem 0 0' }}>
                             {upd.profiles?.full_name || 'System'} • {new Date(upd.created_at).toLocaleString()}
                             {upd.old_status && upd.new_status && ` • ${upd.old_status} → ${upd.new_status}`}
                           </p>
@@ -794,7 +794,7 @@ export default function AdminDashboard() {
                       <h2 style={{ color: '#f0f6fc', fontSize: '1.25rem', margin: '0 0 0.15rem' }}>{deptDetail.name}</h2>
                       <span style={{ color: '#06b6d4', fontSize: '0.8rem' }}>{deptDetail.code}</span>
                     </div>
-                    <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem', borderRadius: '4px',
+                    <span style={{ fontSize: '0.8125rem', padding: '0.15rem 0.5rem', borderRadius: '4px',
                       background: deptDetail.is_active ? 'rgba(46,160,67,0.15)' : 'rgba(248,81,73,0.15)',
                       color: deptDetail.is_active ? '#2ea043' : '#f85149' }}>{deptDetail.is_active ? 'Active' : 'Inactive'}</span>
                   </div>
@@ -853,9 +853,9 @@ export default function AdminDashboard() {
                           <div style={{ flex: 1 }}>
                             <p style={{ color: '#f0f6fc', fontSize: '0.9rem', margin: '0 0 0.15rem' }}>{c.title}</p>
                             <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: (STATUS_COLORS[c.status] || '#8b949e') + '15', color: STATUS_COLORS[c.status] || '#8b949e' }}>{c.status?.replace(/_/g, ' ')}</span>
-                              <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: (SEV_COLORS[c.severity] || '#8b949e') + '15', color: SEV_COLORS[c.severity] || '#8b949e' }}>{c.severity}</span>
-                              {(complaintWorkerMap[c.id] || []).length > 0 && <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: 'rgba(46,160,67,0.1)', color: '#2ea043' }}>{(complaintWorkerMap[c.id] || []).length} workers</span>}
+                              <span style={{ fontSize: '0.8125rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: (STATUS_COLORS[c.status] || '#8b949e') + '15', color: STATUS_COLORS[c.status] || '#8b949e' }}>{c.status?.replace(/_/g, ' ')}</span>
+                              <span style={{ fontSize: '0.8125rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: (SEV_COLORS[c.severity] || '#8b949e') + '15', color: SEV_COLORS[c.severity] || '#8b949e' }}>{c.severity}</span>
+                              {(complaintWorkerMap[c.id] || []).length > 0 && <span style={{ fontSize: '0.8125rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: 'rgba(46,160,67,0.1)', color: '#2ea043' }}>{(complaintWorkerMap[c.id] || []).length} workers</span>}
                             </div>
                           </div>
                           <button onClick={() => { setAssigningComplaint(assigningComplaint === c.id ? null : c.id); setSelectedWorkerIds((complaintWorkerMap[c.id] || []).map(w => w.id)); }}
@@ -868,7 +868,7 @@ export default function AdminDashboard() {
                                 <label key={w.id} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0.3rem 0.4rem', borderRadius: '4px', cursor: 'pointer', background: selectedWorkerIds.includes(w.id) ? 'rgba(46,160,67,0.08)' : 'transparent' }}>
                                   <input type="checkbox" checked={selectedWorkerIds.includes(w.id)} onChange={() => toggleWorkerSelection(w.id)} style={{ accentColor: '#2ea043', width: '16px', height: '16px' }} />
                                   <span style={{ color: '#f0f6fc', fontSize: '0.85rem' }}>{w.name}</span>
-                                  <span style={{ color: '#8b949e', fontSize: '0.7rem' }}>{w.role?.replace(/_/g, ' ')}</span>
+                                  <span style={{ color: '#8b949e', fontSize: '0.8125rem' }}>{w.role?.replace(/_/g, ' ')}</span>
                                 </label>
                               ))}
                             </div>
@@ -923,7 +923,7 @@ export default function AdminDashboard() {
                     { label: 'Excluded', value: budgetResult.itemsExcluded || 0, color: '#f85149' },
                   ].map((stat, i) => (
                     <div key={i} style={{ ...cardStyle, borderLeft: `3px solid ${stat.color}` }}>
-                      <p style={{ color: '#8b949e', fontSize: '0.7rem', margin: '0 0 0.2rem' }}>{stat.label}</p>
+                      <p style={{ color: '#8b949e', fontSize: '0.8125rem', margin: '0 0 0.2rem' }}>{stat.label}</p>
                       <p style={{ color: stat.color, fontSize: '1.4rem', fontWeight: 700, margin: 0 }}>{stat.value}</p>
                     </div>
                   ))}
@@ -934,8 +934,8 @@ export default function AdminDashboard() {
                   <div key={c.id} style={{ ...cardStyle, marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: `3px solid ${SEV_COLORS[c.severity] || '#8b949e'}` }}>
                     <div>
                       <p style={{ color: '#f0f6fc', fontSize: '0.85rem', margin: '0 0 0.2rem', fontWeight: 500 }}>#{c.rank} {c.title}</p>
-                      <span style={{ fontSize: '0.7rem', color: SEV_COLORS[c.severity] || '#8b949e' }}>{c.severity}</span>
-                      <span style={{ fontSize: '0.7rem', color: '#8b949e', marginLeft: '0.5rem' }}>{c.category?.replace(/_/g, ' ')}</span>
+                      <span style={{ fontSize: '0.8125rem', color: SEV_COLORS[c.severity] || '#8b949e' }}>{c.severity}</span>
+                      <span style={{ fontSize: '0.8125rem', color: '#8b949e', marginLeft: '0.5rem' }}>{c.category?.replace(/_/g, ' ')}</span>
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <p style={{ color: '#f59e0b', fontSize: '0.9rem', fontWeight: 600, margin: 0 }}>₹{(c.cost || 0).toLocaleString()}</p>
