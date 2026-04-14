@@ -92,19 +92,8 @@ export default function AdminDashboard() {
         const deptList = dp.data.departments || dp.data || [];
         setDepartments(deptList);
         setDeptPerformance(perf.data.performance || []);
-        // Fetch workers and complaints for each department (expanded view)
-        const wMap = {};
-        const cMap = {};
-        await Promise.all(deptList.map(async (dept) => {
-          const [wRes, cRes] = await Promise.all([
-            departmentsAPI.getWorkers(dept.id).catch(() => ({ data: { workers: [] } })),
-            complaintsAPI.getAll({ department_id: dept.id, limit: 20 }).catch(() => ({ data: { complaints: [] } }))
-          ]);
-          wMap[dept.id] = wRes.data.workers || [];
-          cMap[dept.id] = cRes.data.complaints || [];
-        }));
-        setDeptWorkers(wMap);
-        setDeptComplaints(cMap);
+        // Workers and complaints loaded on-demand when a department is selected (via selectDeptDetail)
+        // No upfront loading needed - this prevents the slow N+1 query problem
       } else if (activeTab === 'users') {
         const res = await adminAPI.getUsers();
         setUsers(res.data.users || []);
@@ -209,22 +198,32 @@ export default function AdminDashboard() {
     setShowAddWorker(false);
     setAssigningComplaint(null);
     try {
+      // Fetch full department details first
+      const detailRes = await departmentsAPI.getById(dept.id).catch(() => ({ data: { department: dept } }));
+      const fullDept = detailRes.data?.department || detailRes.data || dept;
+      setDeptDetail(fullDept);
+
       const [wRes, cRes] = await Promise.all([
         departmentsAPI.getWorkers(dept.id).catch(() => ({ data: { workers: [] } })),
         complaintsAPI.getAll({ department_id: dept.id, limit: 30 }).catch(() => ({ data: { complaints: [] } }))
       ]);
-      setDeptDetail(dept);
-      setDeptDetailWorkers(wRes.data.workers || []);
+      const workers = wRes.data.workers || [];
       const comps = cRes.data.complaints || [];
+      setDeptDetailWorkers(workers);
       setDeptDetailComplaints(comps);
-      // Load workers per complaint
+
+      // Also update sidebar maps so worker counts show
+      setDeptWorkers(prev => ({ ...prev, [dept.id]: workers }));
+      setDeptComplaints(prev => ({ ...prev, [dept.id]: comps }));
+
+      // Load workers per complaint (in parallel, don't block)
       const cwMap = {};
       await Promise.all(comps.map(async (c) => {
         try { const r = await departmentsAPI.getComplaintWorkers(dept.id, c.id); cwMap[c.id] = r.data.workers || []; }
         catch { cwMap[c.id] = []; }
       }));
       setComplaintWorkerMap(cwMap);
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error('selectDeptDetail error:', err); }
   };
 
   const addWorkerToDept = async (e) => {
@@ -609,13 +608,21 @@ export default function AdminDashboard() {
                       <div style={{ flex: 1 }}>
                         <h3 style={{ color: '#f0f6fc', margin: '0 0 0.25rem', fontSize: '1rem' }}>{c.title}</h3>
                         <p style={{ color: '#8b949e', fontSize: '0.8rem', margin: '0 0 0.5rem' }}>{c.description?.slice(0, 120)}{c.description?.length > 120 ? '...' : ''}</p>
-                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: (STATUS_COLORS[c.status] || '#8b949e') + '20', color: STATUS_COLORS[c.status] || '#8b949e' }}>{c.status?.replace(/_/g, ' ')}</span>
-                          <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: (SEV_COLORS[c.severity] || '#8b949e') + '20', color: SEV_COLORS[c.severity] || '#8b949e' }}>{c.severity}</span>
-                          <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(139,148,158,0.1)', color: '#8b949e' }}>{c.category?.replace(/_/g, ' ')}</span>
-                          {c.departments?.name && <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(6,182,212,0.1)', color: '#06b6d4' }}>{c.departments.name}</span>}
-                          {c.priority_score > 0 && <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(168,85,247,0.1)', color: '#a855f7' }}>Score: {c.priority_score?.toFixed(3)}</span>}
+                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
+                          <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.6rem', borderRadius: '6px', background: (STATUS_COLORS[c.status] || '#8b949e') + '20', color: STATUS_COLORS[c.status] || '#8b949e', fontWeight: 600 }}>{c.status?.replace(/_/g, ' ')}</span>
+                          <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.6rem', borderRadius: '6px', background: (SEV_COLORS[c.severity] || '#8b949e') + '20', color: SEV_COLORS[c.severity] || '#8b949e', fontWeight: 600 }}>{c.severity}</span>
+                          <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.6rem', borderRadius: '6px', background: 'rgba(139,148,158,0.1)', color: '#c9d1d9', fontWeight: 500 }}>{c.category?.replace(/_/g, ' ')}</span>
+                          {c.departments?.name && <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.6rem', borderRadius: '6px', background: 'rgba(6,182,212,0.1)', color: '#06b6d4', fontWeight: 500 }}>{c.departments.name}</span>}
+                          {c.priority_score > 0 && <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.6rem', borderRadius: '6px', background: 'rgba(168,85,247,0.1)', color: '#a855f7', fontWeight: 500 }}>Score: {c.priority_score?.toFixed(3)}</span>}
                         </div>
+                        {/* AI Detected Labels - always visible */}
+                        {c.ai_detected_labels?.length > 0 && (
+                          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                            {c.ai_detected_labels.map((label, idx) => (
+                              <span key={idx} style={{ fontSize: '0.75rem', padding: '0.15rem 0.5rem', borderRadius: '4px', background: 'rgba(6,182,212,0.12)', color: '#22d3ee', fontWeight: 500, border: '1px solid rgba(6,182,212,0.2)' }}>🏷️ {label.replace(/_/g, ' ')}</span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       {/* Action Buttons */}
                       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', alignItems: 'center' }}>

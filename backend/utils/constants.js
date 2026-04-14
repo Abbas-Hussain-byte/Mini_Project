@@ -27,7 +27,8 @@ const COMPLAINT_STATUSES = [
   'pending_verification',  // dept head marks done → awaits admin verification
   'resolved',
   'rejected',
-  'duplicate'
+  'duplicate',
+  'escalated'
 ];
 
 const ASSIGNMENT_STATUSES = [
