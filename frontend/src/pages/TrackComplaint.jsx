@@ -101,7 +101,6 @@ export default function TrackComplaint() {
                       <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap', marginBottom: '0.25rem' }}>
                         <span style={{ fontSize: '0.8125rem', padding: '2px 8px', borderRadius: '6px', background: statusInfo.color + '18', color: statusInfo.color, fontWeight: 600 }}>{statusInfo.label}</span>
                         <span style={{ fontSize: '0.8125rem', padding: '2px 8px', borderRadius: '6px', background: (SEV_COLORS[c.severity] || '#64748b') + '18', color: SEV_COLORS[c.severity] || '#64748b', fontWeight: 600 }}>{c.severity}</span>
-                        {c.category && <span style={{ fontSize: '0.8125rem', padding: '2px 8px', borderRadius: '6px', background: 'rgba(100,116,139,0.1)', color: '#94a3b8', fontWeight: 500 }}>{c.category?.replace(/_/g, ' ')}</span>}
                       </div>
                       <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.75rem', color: '#475569' }}>
                         <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><FiClock size={11} /> {new Date(c.created_at).toLocaleDateString()}</span>
@@ -157,16 +156,7 @@ export default function TrackComplaint() {
                       </div>
 
                       {/* AI labels */}
-                      {c.ai_detected_labels?.length > 0 && (
-                        <div style={{ marginBottom: '0.875rem' }}>
-                          <p style={{ color: '#38bdf8', fontSize: '0.8125rem', fontWeight: 700, marginBottom: '0.375rem' }}>🤖 AI Detected</p>
-                          <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
-                            {c.ai_detected_labels.map((l, i) => (
-                              <span key={i} style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '6px', background: 'rgba(56,189,248,0.08)', color: '#38bdf8', fontWeight: 500, border: '1px solid rgba(56,189,248,0.12)' }}>{l.replace(/_/g, ' ')}</span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+
 
                       {/* Status Timeline */}
                       {(det?.complaint_updates || []).length > 0 && (

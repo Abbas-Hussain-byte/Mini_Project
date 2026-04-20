@@ -1,6 +1,34 @@
-﻿const axios = require('axios');
+const axios = require('axios');
 const FormData = require('form-data');
 const { YOLO_LABEL_MAP, CATEGORY_DANGER_SCORE } = require('../utils/constants');
+
+// Title templates for image-only mode (replicated from ML service)
+const LABEL_TITLES = {
+  'damaged_road': 'Damaged Road Surface Detected — Requires Road Maintenance',
+  'pothole': 'Pothole Detected on Road — Risk of Vehicle Damage',
+  'illegal_parking': 'Illegal Parking Violation — Obstructing Traffic Flow',
+  'broken_road_sign': 'Broken/Missing Road Sign — Traffic Safety Hazard',
+  'fallen_trees': 'Fallen Tree Blocking Area — Urgent Clearance Needed',
+  'littering': 'Littering / Garbage Accumulation — Sanitation Required',
+  'vandalism': 'Vandalism / Property Damage — Law Enforcement Alert',
+  'dead_animal': 'Dead Animal on Road — Biohazard Cleanup Needed',
+  'damaged_concrete': 'Damaged Concrete Structure — Public Works Repair Needed',
+  'damaged_electric_wires': 'Damaged / Exposed Electric Wires — Electrocution Risk',
+};
+
+// Detailed descriptions for image-only auto-generated complaints
+const LABEL_DESCRIPTIONS = {
+  'damaged_road': 'AI analysis detected damaged road surface. The road shows signs of deterioration including cracks, breaks, or surface damage that could be hazardous for vehicles and pedestrians. Requires attention from the Roads & Infrastructure department.',
+  'pothole': 'AI analysis detected a pothole on the road surface. Potholes can cause vehicle damage and accidents, especially at night. Immediate repair recommended by the Roads department.',
+  'illegal_parking': 'AI analysis detected an illegally parked vehicle obstructing normal traffic flow or blocking public access. Traffic enforcement action recommended.',
+  'broken_road_sign': 'AI analysis detected a broken, damaged, or missing road sign. This is a traffic safety concern as missing signage can lead to accidents. Traffic department should replace/repair the sign.',
+  'fallen_trees': 'AI analysis detected a fallen tree blocking the road or public area. This poses an immediate obstruction hazard and needs urgent clearance by the Parks & Environment department.',
+  'littering': 'AI analysis detected littering and garbage accumulation in the area. Sanitation department should arrange for cleanup to maintain public hygiene.',
+  'vandalism': 'AI analysis detected vandalism or property damage. Evidence of intentional destruction of public or private property. Law enforcement notification recommended.',
+  'dead_animal': 'AI analysis detected a dead animal on or near the road. This is a biohazard and sanitation concern requiring prompt removal by the Sanitation department.',
+  'damaged_concrete': 'AI analysis detected damage to a concrete structure such as a sidewalk, wall, or overpass. Public Works department should assess structural integrity and arrange repairs.',
+  'damaged_electric_wires': 'AI analysis detected damaged or exposed electric wires/poles. THIS IS A HIGH-PRIORITY SAFETY HAZARD with risk of electrocution. Electricity department must be notified immediately for emergency repair.',
+};
 
 const ML_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
 
@@ -76,6 +104,16 @@ async function analyzeComplaint({ title, description, imageUrls, videoUrl, latit
             const topDet = imageResponse.data.detections.reduce((a, b) => a.confidence > b.confidence ? a : b);
             result.analysis.category = topDet.label;
             result.category = topDet.label;
+
+            // NEW: Populate title and description from fallback templates if not already set
+            if (result.title === 'image submission' || result.title === 'Civic Issue Reported') {
+              result.title = LABEL_TITLES[topDet.label] || `${topDet.label.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} Detected`;
+            }
+            if (!result.description || result.description === 'Image-based complaint') {
+              const baseDesc = LABEL_DESCRIPTIONS[topDet.label] || `AI analysis detected ${topDet.label.replace(/_/g, ' ')}.`;
+              const confidenceDesc = `Detected with ${(topDet.confidence * 100).toFixed(0)}% confidence.`;
+              result.description = `${baseDesc} ${confidenceDesc}`;
+            }
           }
         }
       } catch (err) {

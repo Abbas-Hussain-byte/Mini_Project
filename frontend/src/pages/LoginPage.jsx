@@ -30,17 +30,6 @@ export default function LoginPage() {
 
     try {
       let email = identifier;
-
-      if (loginType === 'citizen') {
-        // Citizen login: convert phone to proxy email
-        const cleanPhone = identifier.replace(/[^0-9]/g, '');
-        if (cleanPhone.length >= 10) {
-          email = `citizen_${cleanPhone}@civicpulse.local`;
-        } else {
-          throw new Error('Please enter a valid phone number (at least 10 digits)');
-        }
-      }
-      // Admin and dept_head login: email is used directly
       // Admin login: email is used directly
 
       const { data, error: authError } = await supabase.auth.signInWithPassword({
@@ -50,7 +39,7 @@ export default function LoginPage() {
 
       if (authError) {
         if (loginType === 'citizen') {
-          throw new Error('Invalid phone number or password. Please check and try again.');
+          throw new Error('Invalid email or password. Please check and try again.');
         }
         throw authError;
       }
@@ -193,17 +182,17 @@ export default function LoginPage() {
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '1.25rem' }}>
             <label style={{ display: 'block', color: '#e2e8f0', fontSize: '0.875rem', marginBottom: '0.5rem', fontWeight: 600 }}>
-              {loginType === 'citizen' ? 'Phone Number' : 'Email Address'}
+              Email Address
             </label>
             <div style={{
               display: 'flex', alignItems: 'center', background: 'rgba(0,0,0,0.3)',
               borderRadius: '12px', border: `1px solid ${identifier ? accentColor + '40' : 'rgba(51, 65, 85, 0.5)'}`,
               padding: '0 1rem', transition: 'border-color 0.3s'
             }}>
-              {loginType === 'citizen' ? <FiPhone color="#64748b" size={16} /> : <FiMail color="#64748b" size={16} />}
+              <FiMail color="#64748b" size={16} />
               <input
-                type={loginType === 'citizen' ? 'tel' : 'email'}
-                placeholder={loginType === 'citizen' ? 'Enter your registered phone number' : loginType === 'dept_head' ? 'Enter your department email' : 'admin@example.com'}
+                type="email"
+                placeholder={loginType === 'citizen' ? 'Enter your registered email' : loginType === 'dept_head' ? 'Enter your department email' : 'admin@example.com'}
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
                 required

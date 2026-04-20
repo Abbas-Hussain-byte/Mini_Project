@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { complaintsAPI, analyticsAPI, departmentsAPI, adminAPI } from '../services/api';
-import { FiBarChart2, FiAlertTriangle, FiUsers, FiDollarSign, FiBriefcase, FiCheck, FiX, FiMessageSquare, FiSend, FiFilter, FiRefreshCw, FiChevronDown, FiChevronUp, FiImage, FiPlus, FiTrash2, FiDownload, FiPhone } from 'react-icons/fi';
+import { FiBarChart2, FiAlertTriangle, FiUsers, FiDollarSign, FiBriefcase, FiCheck, FiX, FiMessageSquare, FiSend, FiFilter, FiRefreshCw, FiChevronDown, FiChevronUp, FiImage, FiPlus, FiTrash2, FiDownload, FiPhone, FiUserPlus, FiUser, FiMapPin, FiCalendar } from 'react-icons/fi';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, Title, Tooltip, Legend } from 'chart.js';
 import { Bar, Line, Doughnut } from 'react-chartjs-2';
 
@@ -73,18 +73,7 @@ export default function AdminDashboard() {
     return [...new Set(tags)];
   };
 
-  // Department performance chart data
-  const deptChartData = {
-    labels: deptPerformance.map(d => d.name?.slice(0, 15) || 'Unknown'),
-    datasets: [{
-      label: 'Completion Rate (%)',
-      data: deptPerformance.map(d => d.completion_rate || d.completionRate || 0),
-      backgroundColor: 'rgba(6, 182, 212, 0.6)',
-      borderColor: '#06b6d4',
-      borderWidth: 1,
-      borderRadius: 4
-    }]
-  };
+
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -640,19 +629,11 @@ export default function AdminDashboard() {
                           {c.departments?.name && <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.6rem', borderRadius: '6px', background: 'rgba(6,182,212,0.1)', color: '#06b6d4', fontWeight: 500 }}>{c.departments.name}</span>}
                           {c.priority_score > 0 && <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.6rem', borderRadius: '6px', background: 'rgba(168,85,247,0.1)', color: '#a855f7', fontWeight: 500 }}>Score: {c.priority_score?.toFixed(3)}</span>}
                         </div>
-                        {/* AI Detected Labels - always visible */}
-                        {c.ai_detected_labels?.length > 0 && (
-                          <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
-                            {c.ai_detected_labels.map((label, idx) => (
-                              <span key={idx} style={{ fontSize: '0.75rem', padding: '0.15rem 0.5rem', borderRadius: '4px', background: 'rgba(6,182,212,0.12)', color: '#22d3ee', fontWeight: 500, border: '1px solid rgba(6,182,212,0.2)' }}>🏷️ {label.replace(/_/g, ' ')}</span>
-                            ))}
-                          </div>
-                        )}
-                        {/* Hashtag Tags */}
-                        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-                          {generateTags(c).map((tag, idx) => (
-                            <span key={idx} style={{ fontSize: '0.75rem', padding: '0.15rem 0.5rem', borderRadius: '4px', background: 'rgba(168,85,247,0.1)', color: '#c084fc', fontWeight: 500 }}>{tag}</span>
-                          ))}
+                        {/* Unified ID Tag */}
+                        <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginBottom: '0.35rem' }}>
+                          <span style={{ fontSize: '0.75rem', padding: '0.15rem 0.5rem', borderRadius: '4px', background: 'rgba(6,182,212,0.12)', color: '#22d3ee', fontWeight: 600, border: '1px solid rgba(6,182,212,0.2)' }}>
+                            #{c.id?.split('-')[0].toUpperCase()}
+                          </span>
                         </div>
                       </div>
                       {/* Action Buttons */}
@@ -818,7 +799,7 @@ export default function AdminDashboard() {
                     <h4 style={{ color: '#f0f6fc', margin: '0 0 0.15rem', fontSize: '0.95rem' }}>{dept.name}</h4>
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                       <span style={{ color: '#06b6d4', fontSize: '0.75rem' }}>{dept.code}</span>
-                      <span style={{ fontSize: '0.75rem', color: '#8b949e' }}>{(deptWorkers[dept.id] || []).length || dept.total_workers || 0} workers</span>
+                      <span style={{ fontSize: '0.75rem', color: '#8b949e' }}>{dept.workerCount || 0} workers</span>
                     </div>
                   </div>
                 ))}
@@ -1060,12 +1041,25 @@ export default function AdminDashboard() {
                       <td style={{ padding: '0.75rem', color: '#64748b', fontSize: '0.8125rem' }}>{u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
                       <td style={{ padding: '0.75rem' }}>
                         {profile?.role === 'admin' && u.id !== profile?.id && u.role !== 'pending_dept_head' && (
-                          <select value={u.role} onChange={e => handleRoleChange(u.id, e.target.value)}
-                            style={{ padding: '0.375rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(51,65,85,0.5)', background: 'rgba(0,0,0,0.3)', color: '#cbd5e1', fontSize: '0.75rem', fontWeight: 500 }}>
-                            <option value="citizen">Citizen</option>
-                            <option value="admin">Admin</option>
-                            <option value="department_head">Dept Head</option>
-                          </select>
+                          <div style={{ display: 'flex', gap: '0.4rem', flexDirection: 'column' }}>
+                            <select value={u.role} onChange={e => handleRoleChange(u.id, e.target.value, u.department_id)}
+                              style={{ padding: '0.375rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(51,65,85,0.5)', background: 'rgba(0,0,0,0.3)', color: '#cbd5e1', fontSize: '0.75rem', fontWeight: 500 }}>
+                              <option value="citizen">Citizen</option>
+                              <option value="admin">Admin</option>
+                              <option value="department_head">Dept Head</option>
+                            </select>
+                            {u.role === 'department_head' && (
+                              <select 
+                                value={u.department_id || ''} 
+                                onChange={e => handleRoleChange(u.id, 'department_head', e.target.value)}
+                                style={{ padding: '0.375rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(168,85,247,0.4)', background: 'rgba(168,85,247,0.08)', color: '#c084fc', fontSize: '0.75rem', fontWeight: 500 }}>
+                                <option value="" disabled>Assign Dept...</option>
+                                {departments.map(d => (
+                                  <option key={d.id} value={d.id}>{d.name}</option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
                         )}
                       </td>
                     </tr>
