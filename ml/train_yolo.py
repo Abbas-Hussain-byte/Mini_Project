@@ -1,17 +1,18 @@
 """
 CivicPulse — YOLO Fine-Tuning on Kaggle Urban Issues Dataset
 Handles the nested ClassName/ClassName/split/images structure,
-remaps labels to a unified 10-class scheme, and trains with augmentation.
+preserves the original Kaggle 0-9 class IDs, and trains with augmentation.
 
 Optimized for RTX 3050 Laptop GPU (4GB VRAM):
   - batch=8, amp=True (FP16), cache='disk'
   - 80 epochs with patience=20 for convergence
-  - max_per_class=500 to balance dataset
+  - Uses ALL available images for maximum accuracy
 
 Usage:
-    python train_yolo.py                          # Full training (80 epochs, yolo11n)
+    python train_yolo.py                          # Full training (80 epochs, yolo11n, ALL data)
     python train_yolo.py --model yolo11m.pt        # Use YOLOv11m instead
     python train_yolo.py --epochs 5 --dry-run      # Quick test
+    python train_yolo.py --max_per_class 500       # Cap per class (for quick experiments)
 """
 
 import os
@@ -40,31 +41,37 @@ OUTPUT_MODEL_DIR = os.path.join(ML_DIR, 'models', 'yolo-urban')
 
 # The 10 Kaggle Urban Issues classes (order matches config.yaml)
 # Each folder in the dataset corresponds to one of these classes
+# Class IDs 0-9 are ALREADY correctly assigned in the Kaggle label files.
 CLASSES = [
-    'Damaged Road issues',
-    'Pothole Issues',
-    'Illegal Parking Issues',
-    'Broken Road Sign Issues',
-    'Fallen trees',
-    'Littering/Garbage on Public Places',
-    'Vandalism Issues',
-    'Dead Animal Pollution',
-    'Damaged concrete structures',
-    'Damaged Electric wires and poles',
+    'Damaged Road issues',            # 0
+    'Pothole Issues',                 # 1
+    'Illegal Parking Issues',         # 2
+    'Broken Road Sign Issues',        # 3
+    'Fallen trees',                   # 4
+    'Littering/Garbage on Public Places',  # 5
+    'Vandalism Issues',               # 6
+    'Dead Animal Pollution',          # 7
+    'Damaged concrete structures',    # 8
+    'Damaged Electric wires and poles',  # 9
 ]
 
-# Mapping from dataset folder names → unified class index (0-9)
-FOLDER_TO_CLASS = {
-    'Potholes and RoadCracks': 1,       # → Pothole Issues
-    'IllegalParking': 2,                 # → Illegal Parking Issues
-    'DamagedRoadSigns': 3,              # → Broken Road Sign Issues
-    'FallenTrees': 4,                    # → Fallen trees
-    'Garbage': 5,                        # → Littering/Garbage
-    'Graffitti': 6,                      # → Vandalism Issues
-    'DeadAnimalsPollution': 7,           # → Dead Animal Pollution
-    'Damaged concrete structures': 8,    # → Damaged concrete structures
-    'DamagedElectricalPoles': 9,         # → Damaged Electric wires and poles
-}
+# Mapping from dataset folder names → the EXPECTED class IDs in that folder's labels.
+# Instead of remapping, we PRESERVE the original Kaggle class IDs.
+# The label files already contain the correct class IDs (0-9).
+# We just need to know which folders to process.
+DATASET_FOLDERS = [
+    'Potholes and RoadCracks',       # contains class 0 (damaged road) + class 1 (pothole)
+    'IllegalParking',                 # contains class 2
+    'DamagedRoadSigns',              # contains class 3
+    'FallenTrees',                    # contains class 4
+    'Garbage',                        # contains class 5
+    'Graffitti',                      # contains class 6
+    'DeadAnimalsPollution',          # contains class 7
+    'Damaged concrete structures',    # contains class 8
+    'DamagedElectricalPoles',        # contains class 9
+]
+
+VALID_CLASS_IDS = set(range(10))  # 0–9
 
 
 def clean_prepared_dir():
@@ -80,18 +87,54 @@ def clean_prepared_dir():
     print("📁 Created prepared data directories")
 
 
-def is_valid_label_line(line):
-    """Check if a YOLO label line is valid (exactly 5 space-separated values)."""
-    parts = line.strip().split()
-    if len(parts) != 5:
-        return False
+def clean_label_line(line):
+    """Clean and validate a YOLO label line.
+    Handles BOTH formats:
+      - Detection:    class_id cx cy w h           (5 values)
+      - Segmentation: class_id x1 y1 x2 y2 ... xn yn  (polygon points)
+    
+    Segmentation labels are auto-converted to bounding boxes (cx, cy, w, h).
+    Strips BOM characters and validates class ID is in range 0-9.
+    Returns (class_id, detection_format_line) if valid, None otherwise."""
+    # Strip BOM (\ufeff) that appears in some label files (e.g. DeadAnimalsPollution)
+    cleaned = line.strip().replace('\ufeff', '').replace('\xef\xbb\xbf', '')
+    if not cleaned:
+        return None
+    parts = cleaned.split()
+    if len(parts) < 5:
+        return None
     try:
-        int(parts[0])  # class_id should be int
-        for p in parts[1:]:
-            float(p)    # coordinates should be floats
-        return True
+        class_id = int(parts[0])
+        if class_id not in VALID_CLASS_IDS:
+            return None
+
+        coords = [float(p) for p in parts[1:]]
+
+        # Validate all coordinates are in [0, 1] range
+        if any(v < 0.0 or v > 1.0 for v in coords):
+            return None
+
+        if len(parts) == 5:
+            # Standard detection format: class_id cx cy w h
+            return (class_id, cleaned)
+        elif len(coords) >= 4 and len(coords) % 2 == 0:
+            # Segmentation/polygon format: convert polygon to bounding box
+            xs = coords[0::2]  # x coordinates (even indices)
+            ys = coords[1::2]  # y coordinates (odd indices)
+            x_min, x_max = min(xs), max(xs)
+            y_min, y_max = min(ys), max(ys)
+            cx = (x_min + x_max) / 2.0
+            cy = (y_min + y_max) / 2.0
+            w = x_max - x_min
+            h = y_max - y_min
+            if w > 0.001 and h > 0.001:  # Skip degenerate boxes
+                det_line = f"{class_id} {cx:.6f} {cy:.6f} {w:.6f} {h:.6f}"
+                return (class_id, det_line)
+            return None
+        else:
+            return None
     except ValueError:
-        return False
+        return None
 
 
 def prepare_dataset(max_per_class=None):
@@ -121,9 +164,11 @@ def prepare_dataset(max_per_class=None):
           images/test/*.jpg
           labels/test/*.txt
     
-    Labels are remapped so every class uses the unified 0-9 class IDs.
-    Invalid labels (wrong number of values) are filtered out.
+    IMPORTANT: Labels are PRESERVED as-is from the Kaggle dataset.
+    The Kaggle labels already use the correct class IDs (0-9).
+    We only clean BOM characters, validate format, and filter out-of-range IDs.
     """
+    import random
     
     if not os.path.exists(KAGGLE_DATA_DIR):
         print(f"❌ Kaggle dataset not found at: {KAGGLE_DATA_DIR}")
@@ -134,11 +179,14 @@ def prepare_dataset(max_per_class=None):
     
     total_images = 0
     total_labels = 0
-    skipped_labels = 0
-    class_counts = {}  # Track per-class counts for balance report
+    total_annotations = 0
+    skipped_lines = 0
+    bom_fixed = 0
+    class_annotation_counts = {}  # Track per-class annotation counts
+    class_image_counts = {}      # Track per-class image counts
     
-    # Process each class folder
-    for folder_name, target_class_id in FOLDER_TO_CLASS.items():
+    # Process each folder in the dataset
+    for folder_name in DATASET_FOLDERS:
         folder_path = os.path.join(KAGGLE_DATA_DIR, folder_name)
         
         if not os.path.exists(folder_path):
@@ -152,7 +200,7 @@ def prepare_dataset(max_per_class=None):
         else:
             data_path = folder_path
         
-        print(f"📂 Processing: {folder_name} → class {target_class_id} ({CLASSES[target_class_id]})")
+        print(f"📂 Processing: {folder_name}")
         
         for split in ['train', 'valid', 'test']:
             images_dir = os.path.join(data_path, split, 'images')
@@ -161,85 +209,101 @@ def prepare_dataset(max_per_class=None):
             if not os.path.exists(images_dir):
                 continue
             
-            # Copy images
-            import random
             image_files = glob.glob(os.path.join(images_dir, '*'))
+            valid_images = [f for f in image_files 
+                          if os.path.splitext(f)[1].lower() in ['.jpg', '.jpeg', '.png', '.bmp', '.webp']]
             
-            # Data preprocessing: limit the massive Kaggle dataset if max_per_class is set
-            if max_per_class is not None:
-                random.seed(42) # Replicable subsets
-                valid_images = [f for f in image_files if os.path.splitext(f)[1].lower() in ['.jpg', '.jpeg', '.png', '.bmp', '.webp']]
+            # Optional per-class cap for quick experiments
+            if max_per_class is not None and max_per_class < len(valid_images):
+                random.seed(42)  # Reproducible subsets
                 random.shuffle(valid_images)
-                
                 if split == 'train':
-                    image_files = valid_images[:max_per_class]
+                    valid_images = valid_images[:max_per_class]
                 elif split == 'valid':
-                    image_files = valid_images[:max(10, max_per_class // 5)] # ~20% for val
+                    valid_images = valid_images[:max(20, max_per_class // 4)]
                 elif split == 'test':
-                    image_files = valid_images[:max(10, max_per_class // 10)] # ~10% for test
+                    valid_images = valid_images[:max(20, max_per_class // 5)]
             
-            for img_path in image_files:
-                ext = os.path.splitext(img_path)[1].lower()
-                if ext not in ['.jpg', '.jpeg', '.png', '.bmp', '.webp']:
-                    continue
-                
-                # Create unique filename: classname_originalname
+            for img_path in valid_images:
                 img_name = os.path.basename(img_path)
+                # Use unique prefixed name to avoid collisions between folders
                 unique_name = f"{folder_name}_{img_name}"
                 
-                dest_img = os.path.join(PREPARED_DIR, 'images', split, unique_name)
-                shutil.copy2(img_path, dest_img)
-                total_images += 1
-                class_counts[target_class_id] = class_counts.get(target_class_id, 0) + 1
-                
-                # Process corresponding label
+                # Process corresponding label FIRST — skip images with invalid/empty labels
                 label_name = os.path.splitext(img_name)[0] + '.txt'
                 label_path = os.path.join(labels_dir, label_name)
+                dest_label = os.path.join(PREPARED_DIR, 'labels', split, f"{folder_name}_{label_name}")
                 
-                dest_label = os.path.join(PREPARED_DIR, 'labels', split,
-                                          f"{folder_name}_{label_name}")
-                
+                has_valid_label = False
                 if os.path.exists(label_path):
-                    with open(label_path, 'r') as f:
-                        lines = f.readlines()
+                    with open(label_path, 'r', encoding='utf-8-sig') as f:
+                        raw_lines = f.readlines()
                     
                     valid_lines = []
-                    for line in lines:
-                        if not is_valid_label_line(line):
-                            skipped_labels += 1
+                    for line in raw_lines:
+                        # Check for BOM and count fixes
+                        if '\ufeff' in line:
+                            bom_fixed += 1
+                        
+                        result = clean_label_line(line)
+                        if result is None:
+                            skipped_lines += 1
                             continue
                         
-                        parts = line.strip().split()
-                        # Remap the class ID to our unified class
-                        parts[0] = str(target_class_id)
-                        valid_lines.append(' '.join(parts) + '\n')
+                        class_id, cleaned_line = result
+                        valid_lines.append(cleaned_line + '\n')
+                        class_annotation_counts[class_id] = class_annotation_counts.get(class_id, 0) + 1
+                        total_annotations += 1
                     
                     if valid_lines:
                         with open(dest_label, 'w') as f:
                             f.writelines(valid_lines)
+                        has_valid_label = True
                         total_labels += 1
-                else:
-                    # Create empty label file (no detections)
-                    with open(dest_label, 'w') as f:
-                        pass
+                
+                # Copy the image (even if label is empty — YOLO treats that as background)
+                dest_img = os.path.join(PREPARED_DIR, 'images', split, unique_name)
+                shutil.copy2(img_path, dest_img)
+                total_images += 1
+                
+                if has_valid_label:
+                    # Track which classes this folder contributed to
+                    for line in valid_lines:
+                        cid = int(line.strip().split()[0])
+                        class_image_counts[cid] = class_image_counts.get(cid, 0) + 1
     
-    print(f"\n✅ Dataset prepared:")
+    # Report
+    print(f"\n{'='*60}")
+    print(f"✅ Dataset prepared successfully!")
+    print(f"{'='*60}")
     print(f"   📷 Total images: {total_images}")
-    print(f"   🏷️  Total label files: {total_labels}")
-    print(f"   ⚠️  Skipped invalid label lines: {skipped_labels}")
+    print(f"   🏷️  Label files with valid annotations: {total_labels}")
+    print(f"   📝 Total annotations: {total_annotations}")
+    print(f"   ⚠️  Skipped invalid label lines: {skipped_lines}")
+    print(f"   🔧 BOM characters fixed: {bom_fixed}")
     
-    # Count per split
     for split in ['train', 'valid', 'test']:
         n_imgs = len(os.listdir(os.path.join(PREPARED_DIR, 'images', split)))
         n_lbls = len(os.listdir(os.path.join(PREPARED_DIR, 'labels', split)))
         print(f"   {split}: {n_imgs} images, {n_lbls} labels")
     
-    # Class balance report
-    print(f"\n📊 Class distribution (train split):")
-    for cls_id, count in sorted(class_counts.items()):
+    # Class balance report (based on ANNOTATIONS, not images)
+    print(f"\n📊 Class annotation distribution:")
+    missing_classes = []
+    for cls_id in range(10):
+        count = class_annotation_counts.get(cls_id, 0)
         cls_name = CLASSES[cls_id] if cls_id < len(CLASSES) else f'class_{cls_id}'
         bar = '█' * min(count // 100, 50)
-        print(f"   [{cls_id}] {cls_name:40} : {count:5d} {bar}")
+        status = '✅' if count > 0 else '❌ MISSING'
+        print(f"   [{cls_id}] {cls_name:40} : {count:5d} {bar} {status}")
+        if count == 0:
+            missing_classes.append(cls_id)
+    
+    if missing_classes:
+        print(f"\n🚨 WARNING: Classes with ZERO annotations: {missing_classes}")
+        print(f"   The model will not learn these classes!")
+    else:
+        print(f"\n🎉 All 10 classes have annotations!")
     
     return total_images > 0
 
@@ -410,7 +474,7 @@ if __name__ == '__main__':
     parser.add_argument('--imgsz', type=int, default=640, help='Image size (default: 640 for best accuracy)')
     parser.add_argument('--batch', type=int, default=8, help='Batch size (default: 8 for RTX 3050 4GB)')
     parser.add_argument('--device', type=str, default='0', help='Device: cpu or 0 for GPU')
-    parser.add_argument('--max_per_class', type=int, default=500, help='Max images per class per split (default: 500, balances dataset)')
+    parser.add_argument('--max_per_class', type=int, default=None, help='Max images per class per split (default: None = use ALL images)')
     parser.add_argument('--resume', action='store_true', help='Resume from last checkpoint')
     parser.add_argument('--dry-run', action='store_true', help='Only prepare dataset, skip training')
     

@@ -20,7 +20,11 @@ export default function DepartmentDashboard() {
   const [selectedWorkerIds, setSelectedWorkerIds] = useState([]);
   const [complaintWorkers, setComplaintWorkers] = useState({});
   const [expandedComplaint, setExpandedComplaint] = useState(null);
+  const [selectedMessagesId, setSelectedMessagesId] = useState(null);
   const [exportLoading, setExportLoading] = useState(false);
+  const [globalComplaints, setGlobalComplaints] = useState([]);
+  const [collaborationLoading, setCollaborationLoading] = useState(false);
+  const [collabNote, setCollabNote] = useState('');
 
   const isAdmin = profile?.role === 'admin';
   const isDeptHead = profile?.role === 'department_head';
@@ -112,6 +116,12 @@ export default function DepartmentDashboard() {
   };
 
   const loadMessages = async (complaintId) => {
+    if (selectedMessagesId === complaintId) {
+      setSelectedMessagesId(null);
+      setComplaintUpdates([]);
+      return;
+    }
+    setSelectedMessagesId(complaintId);
     try {
       const res = await complaintsAPI.getById(complaintId);
       setComplaintUpdates(res.data.complaint?.complaint_updates || []);
@@ -132,6 +142,25 @@ export default function DepartmentDashboard() {
     setSelectedWorkerIds(prev =>
       prev.includes(workerId) ? prev.filter(id => id !== workerId) : [...prev, workerId]
     );
+  };
+
+  const loadGlobalComplaints = useCallback(async () => {
+    setCollaborationLoading(true);
+    try {
+      const res = await complaintsAPI.getAll({ limit: 100 });
+      setGlobalComplaints(res.data.complaints || []);
+    } catch (err) { console.error('Collab fetch failed:', err); }
+    setCollaborationLoading(false);
+  }, []);
+
+  const handlePostCollabNote = async (complaintId) => {
+    if (!collabNote.trim()) return;
+    try {
+      await complaintsAPI.update(complaintId, { notes: `[COLLAB NOTE] ${collabNote}` });
+      setCollabNote('');
+      loadMessages(complaintId);
+      alert('Message posted to collaboration timeline!');
+    } catch (err) { alert('Failed to post note'); }
   };
 
   const handleExport = async (format = 'csv') => {
@@ -215,17 +244,20 @@ export default function DepartmentDashboard() {
                 <h2 style={{ color: '#f0f6fc', fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>{deptDetail.name}</h2>
                 <div style={{ display: 'flex', gap: '3px', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', padding: '4px' }}>
                   {[
-                    { id: 'overview', label: 'Overview', icon: <FiBriefcase size={14} /> },
-                    { id: 'workers', label: `Workers (${workers.length})`, icon: <FiUsers size={14} /> },
-                    { id: 'complaints', label: `Complaints (${deptComplaints.length})`, icon: <FiAlertTriangle size={14} /> },
+                    { id: 'overview', label: 'Overview', icon: <FiBriefcase size={16} /> },
+                    { id: 'workers', label: `Workers (${workers.length})`, icon: <FiUsers size={16} /> },
+                    { id: 'complaints', label: `Complaints (${deptComplaints.length})`, icon: <FiAlertTriangle size={16} /> },
+                    { id: 'collaboration', label: 'Collaboration Hub', icon: <FiUsers size={16} /> },
                   ].map(sec => (
-                    <button key={sec.id} onClick={() => setActiveSection(sec.id)}
+                    <button key={sec.id} onClick={() => { setActiveSection(sec.id); if (sec.id === 'collaboration') loadGlobalComplaints(); }}
                       style={{
-                        padding: '0.5rem 0.875rem', borderRadius: '8px', border: 'none', cursor: 'pointer',
-                        fontSize: '0.8125rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.375rem',
-                        background: activeSection === sec.id ? 'rgba(56, 189, 248, 0.15)' : 'transparent',
-                        color: activeSection === sec.id ? '#38bdf8' : '#64748b',
-                        transition: 'all 0.2s'
+                        padding: '0.625rem 1rem', borderRadius: '10px', border: 'none', cursor: 'pointer',
+                        fontSize: '0.875rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem',
+                        background: activeSection === sec.id ? 'rgba(56, 189, 248, 0.2)' : 'transparent',
+                        color: activeSection === sec.id ? '#38bdf8' : '#94a3b8',
+                        transition: 'all 0.2s',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
                       }}>
                       {sec.icon} {sec.label}
                     </button>
@@ -559,25 +591,108 @@ export default function DepartmentDashboard() {
                           ) : <p style={{ color: '#475569', fontSize: '0.875rem' }}>No workers available. Add workers first.</p>}
                         </div>
                       )}
+
+                      {/* Messages panel - MOVED INSIDE LOOP */}
+                      {selectedMessagesId === c.id && (
+                        <div style={{ ...cardStyle, marginTop: '0.875rem', borderLeft: '3px solid #a855f7', background: 'rgba(168,85,247,0.03)' }}>
+                          <h4 style={{ color: '#a855f7', margin: '0 0 0.625rem', fontSize: '0.9375rem', fontWeight: 700 }}>📨 Messages & Timeline</h4>
+                          {complaintUpdates.length > 0 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                              {complaintUpdates.map((upd, i) => (
+                                <div key={i} style={{ padding: '0.625rem 0.875rem', borderRadius: '8px', background: upd.comment?.includes('[ADMIN MESSAGE]') ? 'rgba(168,85,247,0.08)' : 'rgba(0,0,0,0.15)', borderLeft: `3px solid ${upd.comment?.includes('[ADMIN MESSAGE]') ? '#a855f7' : '#475569'}` }}>
+                                  <p style={{ color: '#f0f6fc', fontSize: '0.875rem', margin: '0 0 0.25rem', lineHeight: 1.5 }}>{upd.comment?.replace('[ADMIN MESSAGE] ', '📩 ')}</p>
+                                  <p style={{ color: '#64748b', fontSize: '0.75rem', margin: 0, fontWeight: 500 }}>
+                                    {upd.profiles?.full_name || 'System'} • {new Date(upd.created_at).toLocaleString()}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p style={{ color: '#64748b', fontSize: '0.875rem', fontStyle: 'italic', margin: '1rem 0' }}>No messages or timeline events found for this complaint.</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
 
-                  {/* Messages panel */}
-                  {complaintUpdates.length > 0 && (
-                    <div style={{ ...cardStyle, marginTop: '1rem', borderLeft: '3px solid #a855f7' }}>
-                      <h4 style={{ color: '#a855f7', margin: '0 0 0.625rem', fontSize: '0.9375rem', fontWeight: 700 }}>📨 Messages & Timeline</h4>
-                      {complaintUpdates.map((upd, i) => (
-                        <div key={i} style={{ padding: '0.5rem 0.75rem', marginBottom: '0.375rem', borderRadius: '8px', background: upd.comment?.includes('[ADMIN MESSAGE]') ? 'rgba(168,85,247,0.06)' : 'rgba(0,0,0,0.12)', borderLeft: `3px solid ${upd.comment?.includes('[ADMIN MESSAGE]') ? '#a855f7' : '#334155'}` }}>
-                          <p style={{ color: '#cbd5e1', fontSize: '0.8125rem', margin: 0, fontWeight: 400 }}>{upd.comment?.replace('[ADMIN MESSAGE] ', '📩 ')}</p>
-                          <p style={{ color: '#475569', fontSize: '0.8125rem', margin: '0.25rem 0 0', fontWeight: 500 }}>
-                            {upd.profiles?.full_name || 'System'} • {new Date(upd.created_at).toLocaleString()}
-                          </p>
+                  {deptComplaints.length === 0 && <p style={{ color: '#64748b', textAlign: 'center', padding: '2rem', fontSize: '0.9375rem' }}>No complaints assigned to this department.</p>}
+                </div>
+              )}
+
+              {/* ===== COLLABORATION HUB SECTION ===== */}
+              {activeSection === 'collaboration' && (
+                <div style={{ animation: 'fadeIn 0.4s ease-out' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                    <div>
+                      <h3 style={{ color: '#f0f6fc', fontSize: '1.125rem', fontWeight: 800, margin: '0 0 0.25rem' }}>CITY-WIDE COLLABORATION</h3>
+                      <p style={{ color: '#64748b', fontSize: '0.875rem', margin: 0 }}>View and coordinate on complaints across all city departments</p>
+                    </div>
+                  </div>
+
+                  {collaborationLoading ? (
+                    <div style={{ padding: '4rem', textAlign: 'center' }}>
+                      <div style={{ width: '32px', height: '32px', border: '2px solid rgba(56,189,248,0.1)', borderTop: '2px solid #38bdf8', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }}></div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      {globalComplaints.map(c => (
+                        <div key={c.id} style={{ ...cardStyle, borderLeft: `4px solid ${statusColor(c.status)}`, background: 'rgba(255,255,255,0.02)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '0.375rem' }}>
+                                <span style={{ fontSize: '0.8125rem', color: '#38bdf8', fontWeight: 800, background: 'rgba(56,189,248,0.1)', padding: '2px 8px', borderRadius: '4px' }}>#{shortId(c.id)}</span>
+                                <h4 style={{ color: '#f0f6fc', fontSize: '1.0625rem', margin: 0, fontWeight: 700 }}>{c.title}</h4>
+                                <span style={{ fontSize: '0.75rem', color: '#a855f7', fontWeight: 700, background: 'rgba(168,85,247,0.1)', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase' }}>🏢 {c.departments?.name || 'Unassigned'}</span>
+                              </div>
+                              <p style={{ color: '#94a3b8', fontSize: '0.9375rem', margin: '0 0 0.75rem', lineHeight: 1.5 }}>{c.description?.slice(0, 160)}{c.description?.length > 160 ? '...' : ''}</p>
+                              
+                              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '0.8125rem', padding: '3px 12px', borderRadius: '6px', background: statusColor(c.status) + '22', color: statusColor(c.status), fontWeight: 800 }}>{c.status?.replace(/_/g, ' ')}</span>
+                                <span style={{ fontSize: '0.8125rem', padding: '3px 12px', borderRadius: '6px', background: sevColor(c.severity) + '22', color: sevColor(c.severity), fontWeight: 800 }}>{c.severity}</span>
+                                {c.category && <span style={{ fontSize: '0.8125rem', padding: '3px 12px', borderRadius: '6px', background: 'rgba(100,116,139,0.1)', color: '#cbd5e1', fontWeight: 600 }}>🏷️ {c.category.replace(/_/g, ' ')}</span>}
+                              </div>
+                            </div>
+                            
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                              <button onClick={() => loadMessages(c.id)}
+                                style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid rgba(168,85,247,0.3)', background: 'transparent', color: '#a855f7', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                                <FiMessageSquare size={16} /> {selectedMessagesId === c.id ? 'Close' : 'Discuss'}
+                              </button>
+                            </div>
+                          </div>
+
+                          {selectedMessagesId === c.id && (
+                            <div style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', border: '1px solid rgba(168,85,247,0.2)' }}>
+                              <h5 style={{ color: '#a855f7', fontSize: '0.875rem', fontWeight: 800, margin: '0 0 0.75rem', textTransform: 'uppercase' }}>Collaboration Timeline</h5>
+                              
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem', marginBottom: '1rem', maxHeight: '200px', overflowY: 'auto' }}>
+                                {complaintUpdates.length > 0 ? complaintUpdates.map((upd, i) => (
+                                  <div key={i} style={{ padding: '0.75rem', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', borderLeft: `3px solid ${upd.comment?.includes('[COLLAB NOTE]') ? '#a855f7' : '#475569'}` }}>
+                                    <p style={{ color: '#f0f6fc', fontSize: '0.875rem', margin: '0 0 0.25rem' }}>{upd.comment}</p>
+                                    <p style={{ color: '#64748b', fontSize: '0.75rem', margin: 0, fontWeight: 600 }}>{upd.profiles?.full_name || 'System'} • {new Date(upd.created_at).toLocaleString()}</p>
+                                  </div>
+                                )) : <p style={{ color: '#475569', fontSize: '0.875rem', fontStyle: 'italic' }}>No discussion started yet.</p>}
+                              </div>
+
+                              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <input 
+                                  placeholder="Type collaboration note or update..." 
+                                  value={collabNote}
+                                  onChange={e => setCollabNote(e.target.value)}
+                                  style={{ ...inputStyle, flex: 1, fontSize: '0.875rem' }}
+                                  onKeyPress={e => e.key === 'Enter' && handlePostCollabNote(c.id)}
+                                />
+                                <button onClick={() => handlePostCollabNote(c.id)}
+                                  style={{ padding: '0.5rem 1.25rem', borderRadius: '10px', border: 'none', background: '#a855f7', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.875rem' }}>
+                                  Post Note
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
                   )}
-
-                  {deptComplaints.length === 0 && <p style={{ color: '#64748b', textAlign: 'center', padding: '2rem', fontSize: '0.9375rem' }}>No complaints assigned to this department.</p>}
                 </div>
               )}
             </div>

@@ -2,13 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiBell, FiX, FiAlertTriangle, FiCheckCircle, FiUser, FiMessageSquare, FiClipboard } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
-import axios from 'axios';
-
-// Isolated axios instance — does NOT trigger the global 401/logout interceptor
-const notifAxios = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
-  headers: { 'Content-Type': 'application/json' }
-});
+import { adminAPI } from '../services/api';
 
 const TYPE_CONFIG = {
   critical:      { color: '#ef4444', bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.2)',  Icon: FiAlertTriangle },
@@ -43,16 +37,11 @@ export default function NotificationBell() {
 
   const fetchNotifications = useCallback(async () => {
     if (!user) return;
-    const token = localStorage.getItem('access_token');
-    if (!token) return; // No token — don't even try
     try {
-      const res = await notifAxios.get('/admin/notifications', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await adminAPI.getNotifications();
       setNotifications(res.data.notifications || []);
     } catch (err) {
       // Silently ignore — notifications are non-critical
-      // Do NOT clear token or redirect — this is isolated from main auth
       console.warn('Notifications fetch failed:', err.response?.status, err.message);
     }
   }, [user]);
@@ -60,7 +49,7 @@ export default function NotificationBell() {
   useEffect(() => {
     if (!user) return;
     fetchNotifications();
-    intervalRef.current = setInterval(fetchNotifications, 30000);
+    intervalRef.current = setInterval(fetchNotifications, 60000);
     return () => clearInterval(intervalRef.current);
   }, [user, fetchNotifications]);
 

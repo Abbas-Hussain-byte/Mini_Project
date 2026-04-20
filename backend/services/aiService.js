@@ -82,59 +82,93 @@ async function analyzeComplaint({ title, description, imageUrls, videoUrl, latit
       }
     }
 
+    // Start parallel requests for individual models if the main aggregate endpoint isn't used or fails
+    const fullText = `${title || ''}. ${description || ''}`.trim();
+    const promises = [];
+
     // 1. Image analysis (YOLOv8 hazard detection)
     if (imageUrls && imageUrls.length > 0) {
-      try {
-        const imageResponse = await axios.post(`${ML_URL}/ml/analyze-image`, {
-          image_url: imageUrls[0]
-        }, { timeout: 30000 });
+      promises.push(axios.post(`${ML_URL}/ml/analyze-image`, {
+        image_url: imageUrls[0]
+      }, { timeout: 35000 }).then(res => ({ type: 'image', data: res.data })));
+    } else {
+      promises.push(Promise.resolve({ type: 'image', data: null }));
+    }
 
-        if (imageResponse.data && imageResponse.data.detections) {
-          result.analysis.imageDetections = imageResponse.data.detections;
-          result.detectedLabels = imageResponse.data.detections.map(d => d.label);
+    // 2. Text classification
+    if (fullText.length > 2) {
+      promises.push(axios.post(`${ML_URL}/ml/classify-text`, {
+        text: fullText
+      }, { timeout: 25000 }).then(res => ({ type: 'text', data: res.data })));
+    } else {
+      promises.push(Promise.resolve({ type: 'text', data: null }));
+    }
 
-          const maxConfidence = Math.max(...imageResponse.data.detections.map(d => d.confidence || 0));
-          if (maxConfidence > 0.8) result.analysis.imageSeverity = 'critical';
-          else if (maxConfidence > 0.5) result.analysis.imageSeverity = 'high';
-          else if (maxConfidence > 0.3) result.analysis.imageSeverity = 'medium';
+    // 3. Embeddings
+    promises.push(axios.post(`${ML_URL}/ml/embed`, {
+      text: fullText || 'civic issue',
+      image_url: (imageUrls && imageUrls.length > 0) ? imageUrls[0] : null
+    }, { timeout: 25000 }).then(res => ({ type: 'embed', data: res.data })));
+
+    // Run individual models in PARALLEL to minimize total wait time
+    const promiseResults = await Promise.allSettled(promises);
+
+    // Process Parallel Results
+    promiseResults.forEach(res => {
+      if (res.status === 'fulfilled' && res.value.data) {
+        const { type, data } = res.value;
+        if (type === 'image' && data.detections) {
+          result.analysis.imageDetections = data.detections;
+          result.detectedLabels = data.detections.map(d => d.label);
+          
+          const maxConf = Math.max(...data.detections.map(d => d.confidence || 0));
+          if (maxConf > 0.8) result.analysis.imageSeverity = 'critical';
+          else if (maxConf > 0.5) result.analysis.imageSeverity = 'high';
+          else if (maxConf > 0.3) result.analysis.imageSeverity = 'medium';
           else result.analysis.imageSeverity = 'low';
 
-          // Set category from top YOLO detection
-          if (imageResponse.data.detections.length > 0) {
-            const topDet = imageResponse.data.detections.reduce((a, b) => a.confidence > b.confidence ? a : b);
+          if (data.detections.length > 0) {
+            const topDet = data.detections.reduce((a, b) => a.confidence > b.confidence ? a : b);
             result.analysis.category = topDet.label;
             result.category = topDet.label;
 
-            // NEW: Populate title and description from fallback templates if not already set
             if (result.title === 'image submission' || result.title === 'Civic Issue Reported') {
               result.title = LABEL_TITLES[topDet.label] || `${topDet.label.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} Detected`;
             }
             if (!result.description || result.description === 'Image-based complaint') {
               const baseDesc = LABEL_DESCRIPTIONS[topDet.label] || `AI analysis detected ${topDet.label.replace(/_/g, ' ')}.`;
-              const confidenceDesc = `Detected with ${(topDet.confidence * 100).toFixed(0)}% confidence.`;
-              result.description = `${baseDesc} ${confidenceDesc}`;
+              result.description = `${baseDesc} Detected with ${(topDet.confidence * 100).toFixed(0)}% confidence.`;
             }
           }
         }
-      } catch (err) {
-        console.warn('Image analysis failed:', err.message);
-      }
-    }
+        
+        if (type === 'text') {
+          result.analysis.textCategory = data.category;
+          result.analysis.textSeverity = data.severity;
+          result.analysis.textConfidence = data.confidence;
+          if (result.detectedLabels.length === 0 && data.category) {
+            result.detectedLabels = [data.category];
+            result.category = data.category;
+          }
+        }
 
-    // 2. Video analysis — download video and send to /ml/analyze-video
+        if (type === 'embed') {
+          result.analysis.embeddings = {
+            hasTextEmbedding: !!data.text_embedding,
+            hasImageEmbedding: !!data.image_embedding
+          };
+        }
+      } else if (res.status === 'rejected') {
+        console.warn(`Parallel AI step failed: ${res.reason?.message}`);
+      }
+    });
+
+    // 4. Video (Keep separate as it's very heavy and has its own long timeout)
     if (videoUrl) {
       try {
-        // Download the video file from the storage URL
-        const videoResponse = await axios.get(videoUrl, {
-          responseType: 'arraybuffer',
-          timeout: 30000
-        });
-
+        const videoResponse = await axios.get(videoUrl, { responseType: 'arraybuffer', timeout: 30000 });
         const formData = new FormData();
-        formData.append('video', Buffer.from(videoResponse.data), {
-          filename: 'video.mp4',
-          contentType: 'video/mp4'
-        });
+        formData.append('video', Buffer.from(videoResponse.data), { filename: 'video.mp4', contentType: 'video/mp4' });
 
         const mlVideoResponse = await axios.post(`${ML_URL}/ml/analyze-video`, formData, {
           headers: formData.getHeaders(),
@@ -143,76 +177,24 @@ async function analyzeComplaint({ title, description, imageUrls, videoUrl, latit
         });
 
         if (mlVideoResponse.data) {
-          result.analysis.videoDetections = [];
-          const agg = mlVideoResponse.data.aggregated;
-
-          // Extract detections from all frames
+          const vDetections = [];
           if (mlVideoResponse.data.frame_results) {
-            for (const fr of mlVideoResponse.data.frame_results) {
-              if (fr.detections) {
-                result.analysis.videoDetections.push(...fr.detections);
-              }
-            }
+            mlVideoResponse.data.frame_results.forEach(fr => fr.detections && vDetections.push(...fr.detections));
           }
-
-          const videoLabels = result.analysis.videoDetections.map(d => d.label);
-          result.detectedLabels = [...new Set([...result.detectedLabels, ...videoLabels])];
-
-          // If no image detections but video has detections, use video results
-          if (result.detectedLabels.length === 0 && agg && agg.top_label) {
-            result.category = agg.top_label;
-            result.analysis.category = agg.top_label;
+          result.analysis.videoDetections = vDetections;
+          const vLabels = vDetections.map(d => d.label);
+          result.detectedLabels = [...new Set([...result.detectedLabels, ...vLabels])];
+          
+          if (result.detectedLabels.length === 0 && mlVideoResponse.data.aggregated?.top_label) {
+            result.category = mlVideoResponse.data.aggregated.top_label;
+            result.analysis.category = mlVideoResponse.data.aggregated.top_label;
           }
-
-          result.analysis.framesAnalyzed = mlVideoResponse.data.frames_analyzed;
-          result.analysis.videoSeverity = agg?.severity || 'medium';
+          result.analysis.videoSeverity = mlVideoResponse.data.aggregated?.severity || 'medium';
         }
-      } catch (err) {
-        console.warn('Video analysis failed:', err.message);
-      }
+      } catch (err) { console.warn('Video analysis failed:', err.message); }
     }
 
-    // 3. Text classification
-    const fullText = `${title || ''}. ${description || ''}`.trim();
-    if (fullText.length > 2) {
-      try {
-        const textResponse = await axios.post(`${ML_URL}/ml/classify-text`, {
-          text: fullText
-        }, { timeout: 15000 });
-
-        if (textResponse.data) {
-          result.analysis.textCategory = textResponse.data.category;
-          result.analysis.textSeverity = textResponse.data.severity;
-          result.analysis.textConfidence = textResponse.data.confidence;
-
-          if (result.detectedLabels.length === 0 && textResponse.data.category) {
-            result.detectedLabels = [textResponse.data.category];
-            result.category = textResponse.data.category;
-          }
-        }
-      } catch (err) {
-        console.warn('Text classification failed:', err.message);
-      }
-    }
-
-    // 4. Generate embeddings for duplicate detection
-    try {
-      const embedResponse = await axios.post(`${ML_URL}/ml/embed`, {
-        text: fullText || 'civic issue',
-        image_url: imageUrls && imageUrls.length > 0 ? imageUrls[0] : null
-      }, { timeout: 20000 });
-
-      if (embedResponse.data) {
-        result.analysis.embeddings = {
-          hasTextEmbedding: !!embedResponse.data.text_embedding,
-          hasImageEmbedding: !!embedResponse.data.image_embedding
-        };
-      }
-    } catch (err) {
-      console.warn('Embedding generation failed:', err.message);
-    }
-
-    // 5. Calculate combined severity — take the MAX of all severity sources
+    // 5. Calculate combined severity
     const imageSev = SEVERITY_RANK[result.analysis.imageSeverity] || 1;
     const textSev = SEVERITY_RANK[result.analysis.textSeverity] || 1;
     const videoSev = SEVERITY_RANK[result.analysis.videoSeverity] || 1;

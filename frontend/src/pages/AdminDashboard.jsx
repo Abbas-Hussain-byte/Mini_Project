@@ -109,8 +109,12 @@ export default function AdminDashboard() {
         // Workers and complaints loaded on-demand when a department is selected (via selectDeptDetail)
         // No upfront loading needed - this prevents the slow N+1 query problem
       } else if (activeTab === 'users') {
-        const res = await adminAPI.getUsers();
-        setUsers(res.data.users || []);
+        const [uRes, dRes] = await Promise.all([
+          adminAPI.getUsers(),
+          departmentsAPI.getAll()
+        ]);
+        setUsers(uRes.data.users || []);
+        setDepartments(dRes.data.departments || dRes.data || []);
       }
     } catch (err) { console.error('Load error:', err); }
     setLoading(false);
@@ -488,111 +492,107 @@ export default function AdminDashboard() {
                 </div>
               </div>
             )}
-          </div>
-        )}
-
-        {/* ===== DISASTER RESPONSE TAB ===== */}
+          </div>        {/* ===== DISASTER RESPONSE TAB ===== */}
         {activeTab === 'disaster' && (
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h2 style={{ color: '#f85149', margin: 0, fontSize: '1.2rem' }}>🚨 Disaster Response Center</h2>
-              <button onClick={loadData} style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: 'rgba(248,81,73,0.2)', color: '#f85149', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.85rem' }}>
-                <FiRefreshCw size={14} /> Refresh Alerts
+          <div style={{ animation: 'fadeIn 0.4s ease-out' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+              <h2 style={{ color: '#f85149', margin: 0, fontSize: '1.375rem', fontWeight: 800 }}>🚨 DISASTER RESPONSE CENTER</h2>
+              <button onClick={loadData} style={{ padding: '0.625rem 1.25rem', borderRadius: '10px', border: 'none', background: 'rgba(248,81,73,0.15)', color: '#f85149', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 700 }}>
+                <FiRefreshCw size={16} /> Refresh Alerts
               </button>
             </div>
 
             {disasterAlerts?.autoEscalated > 0 && (
-              <div style={{ ...cardStyle, background: 'rgba(248,81,73,0.08)', border: '1px solid rgba(248,81,73,0.3)', marginBottom: '1rem' }}>
-                <p style={{ color: '#f85149', fontWeight: 700, margin: '0 0 0.25rem' }}>⚡ {disasterAlerts.autoEscalated} complaint(s) auto-escalated just now!</p>
-                <p style={{ color: '#8b949e', fontSize: '0.8rem', margin: 0 }}>Critical/high complaints past their deadline were automatically escalated.</p>
+              <div style={{ ...cardStyle, background: 'rgba(248,81,73,0.06)', border: '1px solid rgba(248,81,73,0.2)', marginBottom: '1.5rem', padding: '1.25rem' }}>
+                <p style={{ color: '#f85149', fontWeight: 800, fontSize: '1.0625rem', margin: '0 0 0.375rem' }}>⚡ EMERGENCY: {disasterAlerts.autoEscalated} complaints auto-escalated!</p>
+                <p style={{ color: '#94a3b8', fontSize: '0.875rem', margin: 0, fontWeight: 500 }}>System automatically escalated critical issues past their response deadline.</p>
               </div>
             )}
 
             {/* Escalated Complaints */}
-            <h3 style={{ color: '#f85149', fontSize: '0.95rem', margin: '1rem 0 0.5rem' }}>🔴 Escalated Complaints ({disasterAlerts?.escalatedComplaints?.length || 0})</h3>
-            {(disasterAlerts?.escalatedComplaints || []).map(c => (
-              <div key={c.id} style={{ ...cardStyle, marginBottom: '0.75rem', borderLeft: '3px solid #f85149' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  <div>
-                    <h4 style={{ color: '#f0f6fc', margin: '0 0 0.25rem', fontSize: '1rem' }}>{c.title}</h4>
-                    <p style={{ color: '#8b949e', fontSize: '0.8rem', margin: '0 0 0.5rem' }}>{c.description?.slice(0, 150)}</p>
-                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(248,81,73,0.2)', color: '#f85149' }}>ESCALATED</span>
-                      <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: (SEV_COLORS[c.severity] || '#8b949e') + '20', color: SEV_COLORS[c.severity] }}>{c.severity}</span>
-                      <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(139,148,158,0.1)', color: '#8b949e' }}>{c.category?.replace(/_/g, ' ')}</span>
-                      {c.departments?.name && <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(6,182,212,0.1)', color: '#06b6d4' }}>{c.departments.name}</span>}
-                      <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}>Priority: {c.priority_score?.toFixed(3)}</span>
+            <h3 style={{ color: '#f85149', fontSize: '1.125rem', margin: '1.5rem 0 0.75rem', fontWeight: 800 }}>🔴 ESCALATED COMPLAINTS ({disasterAlerts?.escalatedComplaints?.length || 0})</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {(disasterAlerts?.escalatedComplaints || []).map(c => (
+                <div key={c.id} style={{ ...cardStyle, borderLeft: '4px solid #f85149', background: 'rgba(248,81,73,0.03)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+                    <div style={{ flex: 1 }}>
+                      <h4 style={{ color: '#f0f6fc', margin: '0 0 0.375rem', fontSize: '1.0625rem', fontWeight: 700 }}>{c.title}</h4>
+                      <p style={{ color: '#94a3b8', fontSize: '0.9375rem', margin: '0 0 0.75rem', lineHeight: 1.5 }}>{c.description?.slice(0, 180)}</p>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '4px', background: '#f8514922', color: '#f85149', fontWeight: 800, textTransform: 'uppercase' }}>ESCALATED</span>
+                        <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '4px', background: (SEV_COLORS[c.severity] || '#8b949e') + '15', color: SEV_COLORS[c.severity], fontWeight: 800, textTransform: 'uppercase' }}>{c.severity}</span>
+                        {c.departments?.name && <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '4px', background: 'rgba(6,182,212,0.1)', color: '#06b6d4', fontWeight: 700 }}>🏢 {c.departments.name}</span>}
+                        <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#f59e0b', fontWeight: 700 }}>🔥 Priority: {c.priority_score?.toFixed(3)}</span>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <select onChange={(e) => { if (e.target.value) handleStatusUpdate(c.id, e.target.value); e.target.value = ''; }}
+                        defaultValue="" style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(51,65,85,0.6)', background: 'rgba(0,0,0,0.3)', color: '#f0f6fc', fontSize: '0.8125rem', fontWeight: 700, cursor: 'pointer' }}>
+                        <option value="" disabled>Actions...</option>
+                        <option value="assigned">Assign Dept</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="resolved">Resolve Now</option>
+                      </select>
                     </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '0.4rem' }}>
-                    <select onChange={(e) => { if (e.target.value) handleStatusUpdate(c.id, e.target.value); e.target.value = ''; }}
-                      defaultValue="" style={{ padding: '0.4rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(48,54,61,0.8)', background: 'rgba(0,0,0,0.3)', color: '#c9d1d9', fontSize: '0.75rem', cursor: 'pointer' }}>
-                      <option value="" disabled>Change status...</option>
-                      <option value="assigned">Assign Dept</option>
-                      <option value="in_progress">In Progress</option>
-                      <option value="resolved">Resolve</option>
-                    </select>
-                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
             {(disasterAlerts?.escalatedComplaints || []).length === 0 && (
-              <div style={{ ...cardStyle, textAlign: 'center' }}>
-                <p style={{ color: '#2ea043', fontSize: '1rem' }}>✅ No escalated complaints. All clear!</p>
+              <div style={{ ...cardStyle, textAlign: 'center', padding: '3rem 1rem' }}>
+                <p style={{ color: '#2ea043', fontSize: '1.125rem', fontWeight: 700 }}>✅ No escalated complaints. All clear!</p>
               </div>
             )}
 
             {/* At-Risk Complaints */}
-            <h3 style={{ color: '#f59e0b', fontSize: '0.95rem', margin: '1.5rem 0 0.5rem' }}>⚠️ At-Risk Complaints ({disasterAlerts?.atRiskComplaints?.length || 0})</h3>
-            <p style={{ color: '#6e7681', fontSize: '0.8rem', marginBottom: '0.5rem' }}>Critical/high complaints past deadline — may auto-escalate soon.</p>
-            {(disasterAlerts?.atRiskComplaints || []).map((c, i) => (
-              <div key={i} style={{ ...cardStyle, marginBottom: '0.75rem', borderLeft: '3px solid #f59e0b' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  <div>
-                    <h4 style={{ color: '#f0f6fc', margin: '0 0 0.25rem', fontSize: '0.95rem' }}>{c.title}</h4>
-                    <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: (SEV_COLORS[c.severity] || '#8b949e') + '20', color: SEV_COLORS[c.severity] }}>{c.severity}</span>
-                      <span style={{ fontSize: '0.8125rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}>{c.hoursOverdue}hrs overdue</span>
+            <h3 style={{ color: '#f59e0b', fontSize: '1.125rem', margin: '2rem 0 0.75rem', fontWeight: 800 }}>⚠️ AT-RISK COMPLAINTS ({disasterAlerts?.atRiskComplaints?.length || 0})</h3>
+            <p style={{ color: '#64748b', fontSize: '0.875rem', marginBottom: '0.875rem', fontWeight: 500 }}>High-severity issues past deadline — system will auto-escalate soon.</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {(disasterAlerts?.atRiskComplaints || []).map((c, i) => (
+                <div key={i} style={{ ...cardStyle, borderLeft: '4px solid #f59e0b', background: 'rgba(245,158,11,0.02)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+                    <div>
+                      <h4 style={{ color: '#f0f6fc', margin: '0 0 0.375rem', fontSize: '1.0625rem', fontWeight: 700 }}>{c.title}</h4>
+                      <div style={{ display: 'flex', gap: '0.625rem', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '4px', background: (SEV_COLORS[c.severity] || '#8b949e') + '15', color: SEV_COLORS[c.severity], fontWeight: 800 }}>{c.severity}</span>
+                        <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '4px', background: 'rgba(245,158,11,0.15)', color: '#f59e0b', fontWeight: 700 }}>{c.hoursOverdue}HRS OVERDUE</span>
+                      </div>
                     </div>
+                    <button onClick={async () => { await adminAPI.escalateComplaint(c.id); loadData(); }}
+                      style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: 'rgba(248,81,73,0.15)', color: '#f85149', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 800 }}>
+                      🚨 Escalate Now
+                    </button>
                   </div>
-                  <button onClick={async () => { await adminAPI.escalateComplaint(c.id); loadData(); }}
-                    style={{ padding: '0.4rem 0.75rem', borderRadius: '6px', border: 'none', background: 'rgba(248,81,73,0.2)', color: '#f85149', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}>
-                    🚨 Escalate Now
-                  </button>
                 </div>
-              </div>
-            ))}
-            {(disasterAlerts?.atRiskComplaints || []).length === 0 && (
-              <div style={{ ...cardStyle, textAlign: 'center' }}>
-                <p style={{ color: '#8b949e', fontSize: '0.85rem' }}>No at-risk complaints currently.</p>
-              </div>
-            )}
+              ))}
+            </div>
           </div>
         )}
 
         {/* ===== COMPLAINTS TAB ===== */}
         {activeTab === 'complaints' && (
-          <div>
-            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-              <FiFilter color="#8b949e" />
+          <div style={{ animation: 'fadeIn 0.4s ease-out' }}>
+            <div style={{ display: 'flex', gap: '0.875rem', marginBottom: '1.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              <FiFilter color="#64748b" size={18} />
               <select value={filter.status} onChange={e => setFilter(f => ({ ...f, status: e.target.value }))}
-                style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(48, 54, 61, 0.8)', background: 'rgba(0,0,0,0.3)', color: '#c9d1d9', fontSize: '0.85rem' }}>
+                style={{ padding: '0.625rem 0.875rem', borderRadius: '10px', border: '1px solid rgba(51,65,85,0.6)', background: 'rgba(0,0,0,0.3)', color: '#f0f6fc', fontSize: '0.875rem', fontWeight: 600 }}>
                 <option value="">All Statuses</option>
                 {Object.keys(STATUS_COLORS).map(s => (
                   <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
                 ))}
               </select>
               <select value={filter.severity} onChange={e => setFilter(f => ({ ...f, severity: e.target.value }))}
-                style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(48, 54, 61, 0.8)', background: 'rgba(0,0,0,0.3)', color: '#c9d1d9', fontSize: '0.85rem' }}>
+                style={{ padding: '0.625rem 0.875rem', borderRadius: '10px', border: '1px solid rgba(51,65,85,0.6)', background: 'rgba(0,0,0,0.3)', color: '#f0f6fc', fontSize: '0.875rem', fontWeight: 600 }}>
                 <option value="">All Severities</option>
                 {['low', 'medium', 'high', 'critical'].map(s => (
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>
-              <button onClick={loadData} style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: 'rgba(6, 182, 212, 0.2)', color: '#06b6d4', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.85rem' }}>
-                <FiRefreshCw size={14} /> Refresh
+              <button onClick={loadData} style={{ padding: '0.625rem 1rem', borderRadius: '10px', border: 'none', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: 700 }}>
+                <FiRefreshCw size={16} /> Refresh
               </button>
-              <span style={{ color: '#6e7681', fontSize: '0.8rem', marginRight: 'auto' }}>({complaints.length} results)</span>
+              <span style={{ color: '#64748b', fontSize: '0.875rem', fontWeight: 600, marginRight: 'auto' }}>({complaints.length} results)</span>
+plaints.length} results)</span>
               {/* Export Buttons */}
               <div style={{ display: 'flex', gap: '0.375rem' }}>
                 <button onClick={() => handleExport('csv')} disabled={exportLoading}
@@ -790,16 +790,16 @@ export default function AdminDashboard() {
             <div style={{ display: 'grid', gridTemplateColumns: departments.length > 0 ? '240px 1fr' : '1fr', gap: '1.25rem' }}>
               {/* LEFT — Department List */}
               <div>
-                <h3 style={{ color: '#c9d1d9', fontSize: '1rem', margin: '0 0 0.5rem' }}>Departments ({departments.length})</h3>
+                <h3 style={{ color: '#c9d1d9', fontSize: '1.125rem', margin: '0 0 0.75rem', fontWeight: 800 }}>DEPARTMENTS ({departments.length})</h3>
                 {departments.map(dept => (
                   <div key={dept.id} onClick={() => selectDeptDetail(dept)}
-                    style={{ ...cardStyle, marginBottom: '0.5rem', cursor: 'pointer', padding: '0.75rem 1rem',
-                      borderLeft: `3px solid ${selectedDept === dept.id ? '#06b6d4' : 'transparent'}`,
-                      background: selectedDept === dept.id ? 'rgba(6,182,212,0.05)' : cardStyle.background, transition: 'all 0.2s' }}>
-                    <h4 style={{ color: '#f0f6fc', margin: '0 0 0.15rem', fontSize: '0.95rem' }}>{dept.name}</h4>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ color: '#06b6d4', fontSize: '0.75rem' }}>{dept.code}</span>
-                      <span style={{ fontSize: '0.75rem', color: '#8b949e' }}>{dept.workerCount || 0} workers</span>
+                    style={{ ...cardStyle, marginBottom: '0.625rem', cursor: 'pointer', padding: '1rem',
+                      borderLeft: `4px solid ${selectedDept === dept.id ? '#06b6d4' : 'transparent'}`,
+                      background: selectedDept === dept.id ? 'rgba(6,182,212,0.1)' : cardStyle.background, transition: 'all 0.2s' }}>
+                    <h4 style={{ color: '#f0f6fc', margin: '0 0 0.25rem', fontSize: '1.0625rem', fontWeight: 700 }}>{dept.name}</h4>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#06b6d4', fontSize: '0.875rem', fontWeight: 700, letterSpacing: '0.5px' }}>{dept.code}</span>
+                      <span style={{ fontSize: '0.875rem', color: '#8b949e', fontWeight: 600 }}>{dept.workerCount || 0} workers</span>
                     </div>
                   </div>
                 ))}
@@ -968,44 +968,30 @@ export default function AdminDashboard() {
 
         {/* ===== USERS TAB (with Dept Head Approval) ===== */}
         {activeTab === 'users' && (
-          <div>
+          <div style={{ animation: 'fadeIn 0.4s ease-out' }}>
             {/* Pending Dept Head Approvals */}
             {users.filter(u => u.role === 'pending_dept_head').length > 0 && (
-              <div style={{ ...cardStyle, marginBottom: '1.25rem', borderLeft: '3px solid #f59e0b', background: 'rgba(245,158,11,0.04)' }}>
-                <h3 style={{ color: '#f59e0b', margin: '0 0 0.75rem', fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  ⏳ Pending Department Head Approvals ({users.filter(u => u.role === 'pending_dept_head').length})
+              <div style={{ ...cardStyle, marginBottom: '1.5rem', borderLeft: '4px solid #f59e0b', background: 'rgba(245,158,11,0.06)' }}>
+                <h3 style={{ color: '#f59e0b', margin: '0 0 1rem', fontSize: '1.125rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                  ⏳ PENDING APPROVALS ({users.filter(u => u.role === 'pending_dept_head').length})
                 </h3>
                 {users.filter(u => u.role === 'pending_dept_head').map(u => (
-                  <div key={u.id} style={{ padding: '0.875rem', background: 'rgba(0,0,0,0.2)', borderRadius: '10px', marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+                  <div key={u.id} style={{ padding: '1rem', background: 'rgba(0,0,0,0.3)', borderRadius: '12px', marginBottom: '0.625rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', border: '1px solid rgba(245,158,11,0.2)' }}>
                     <div>
-                      <p style={{ color: '#f0f6fc', fontSize: '0.9375rem', margin: '0 0 0.25rem', fontWeight: 600 }}>{u.full_name || 'Unknown'}</p>
-                      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '0.8125rem', color: '#94a3b8' }}>{u.email}</span>
-                        {u.phone && <span style={{ fontSize: '0.8125rem', color: '#94a3b8' }}>📞 {u.phone}</span>}
-                        {u.departments && <span style={{ fontSize: '0.8125rem', color: '#a855f7', fontWeight: 600 }}>🏢 {u.departments.name} ({u.departments.code})</span>}
+                      <p style={{ color: '#f0f6fc', fontSize: '1.0625rem', margin: '0 0 0.375rem', fontWeight: 700 }}>{u.full_name || 'Unknown User'}</p>
+                      <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.875rem', color: '#94a3b8', fontWeight: 500 }}>{u.email}</span>
+                        {u.phone && <span style={{ fontSize: '0.875rem', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '0.375rem' }}><FiPhone size={14} /> {u.phone}</span>}
+                        {u.departments && <span style={{ fontSize: '0.875rem', color: '#a855f7', fontWeight: 700, background: 'rgba(168,85,247,0.1)', padding: '2px 8px', borderRadius: '4px' }}>🏢 {u.departments.name}</span>}
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      {/* Department selector (if not already linked) */}
-                      {!u.department_id && (
-                        <select
-                          onChange={e => {
-                            if (e.target.value) handleRoleChange(u.id, 'department_head', e.target.value);
-                          }}
-                          defaultValue=""
-                          style={{ padding: '0.4rem 0.6rem', borderRadius: '8px', border: '1px solid rgba(51,65,85,0.5)', background: 'rgba(0,0,0,0.3)', color: '#cbd5e1', fontSize: '0.8125rem', cursor: 'pointer', fontWeight: 500 }}>
-                          <option value="" disabled>Assign to dept...</option>
-                          {departments.map(d => (
-                            <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
-                          ))}
-                        </select>
-                      )}
+                    <div style={{ display: 'flex', gap: '0.625rem', alignItems: 'center' }}>
                       <button onClick={() => handleRoleChange(u.id, 'department_head', u.department_id)}
-                        style={{ padding: '0.4rem 0.875rem', borderRadius: '8px', border: 'none', background: 'rgba(34,197,94,0.2)', color: '#22c55e', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 700 }}>
-                        ✓ Approve
+                        style={{ padding: '0.5rem 1.25rem', borderRadius: '8px', border: 'none', background: '#22c55e', color: '#fff', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 700, boxShadow: '0 4px 12px rgba(34,197,94,0.2)' }}>
+                        ✓ Approve Head
                       </button>
                       <button onClick={() => handleRoleChange(u.id, 'citizen')}
-                        style={{ padding: '0.4rem 0.875rem', borderRadius: '8px', border: 'none', background: 'rgba(239,68,68,0.15)', color: '#ef4444', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 700 }}>
+                        style={{ padding: '0.5rem 1.25rem', borderRadius: '8px', border: 'none', background: 'rgba(239,68,68,0.15)', color: '#ef4444', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 700 }}>
                         ✕ Reject
                       </button>
                     </div>
@@ -1015,57 +1001,86 @@ export default function AdminDashboard() {
             )}
 
             {/* All Users Table */}
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr>
-                    {['Name', 'Email', 'Phone', 'Role', 'Department', 'Joined', 'Actions'].map(h => (
-                      <th key={h} style={{ textAlign: 'left', padding: '0.75rem', color: '#94a3b8', fontSize: '0.8125rem', borderBottom: '1px solid rgba(51,65,85,0.4)', fontWeight: 700 }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map(u => (
-                    <tr key={u.id} style={{ borderBottom: '1px solid rgba(51,65,85,0.2)', transition: 'background 0.2s' }}>
-                      <td style={{ padding: '0.75rem', color: '#f0f6fc', fontSize: '0.875rem', fontWeight: 500 }}>{u.full_name || '—'}</td>
-                      <td style={{ padding: '0.75rem', color: '#94a3b8', fontSize: '0.875rem' }}>{u.email}</td>
-                      <td style={{ padding: '0.75rem', color: '#94a3b8', fontSize: '0.875rem' }}>{u.phone || '—'}</td>
-                      <td style={{ padding: '0.75rem' }}>
-                        <span style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '6px', fontWeight: 600,
-                          background: u.role === 'admin' ? 'rgba(245,158,11,0.12)' : u.role === 'department_head' ? 'rgba(168,85,247,0.12)' : u.role === 'pending_dept_head' ? 'rgba(245,158,11,0.08)' : 'rgba(56,189,248,0.12)',
-                          color: u.role === 'admin' ? '#f59e0b' : u.role === 'department_head' ? '#a855f7' : u.role === 'pending_dept_head' ? '#f59e0b' : '#38bdf8' }}>
-                          {u.role?.replace(/_/g, ' ')}
-                        </span>
-                      </td>
-                      <td style={{ padding: '0.75rem', color: '#a855f7', fontSize: '0.8125rem', fontWeight: 500 }}>{u.departments?.name || '—'}</td>
-                      <td style={{ padding: '0.75rem', color: '#64748b', fontSize: '0.8125rem' }}>{u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
-                      <td style={{ padding: '0.75rem' }}>
-                        {profile?.role === 'admin' && u.id !== profile?.id && u.role !== 'pending_dept_head' && (
-                          <div style={{ display: 'flex', gap: '0.4rem', flexDirection: 'column' }}>
-                            <select value={u.role} onChange={e => handleRoleChange(u.id, e.target.value, u.department_id)}
-                              style={{ padding: '0.375rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(51,65,85,0.5)', background: 'rgba(0,0,0,0.3)', color: '#cbd5e1', fontSize: '0.75rem', fontWeight: 500 }}>
-                              <option value="citizen">Citizen</option>
-                              <option value="admin">Admin</option>
-                              <option value="department_head">Dept Head</option>
-                            </select>
-                            {u.role === 'department_head' && (
+            <div style={{ ...cardStyle }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <h3 style={{ color: '#f0f6fc', fontSize: '1.125rem', fontWeight: 800, margin: 0 }}>USER DIRECTORY ({users.length})</h3>
+                <span style={{ fontSize: '0.8125rem', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '1px' }}>Global Access Control</span>
+              </div>
+              
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0 0.5rem' }}>
+                  <thead>
+                    <tr>
+                      {['User Info', 'Contact', 'Role & Assignment', 'Joined', 'Actions'].map(h => (
+                        <th key={h} style={{ textAlign: 'left', padding: '0.75rem 1rem', color: '#94a3b8', fontSize: '0.8125rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map(u => (
+                      <tr key={u.id} style={{ background: 'rgba(255,255,255,0.02)', transition: 'transform 0.2s, background 0.2s' }}>
+                        <td style={{ padding: '1rem', borderTopLeftRadius: '10px', borderBottomLeftRadius: '10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            <div style={{ width: '40px', height: '40px', borderRadius: '10px', background: 'linear-gradient(135deg, #334155, #0f172a)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#38bdf8', fontWeight: 700, fontSize: '1.125rem', border: '1px solid rgba(56,189,248,0.2)' }}>
+                              {(u.full_name || 'U').charAt(0)}
+                            </div>
+                            <div>
+                              <p style={{ color: '#f0f6fc', fontSize: '1rem', margin: '0 0 0.125rem', fontWeight: 700 }}>{u.full_name || '—'}</p>
+                              <p style={{ color: '#64748b', fontSize: '0.8125rem', margin: 0, fontWeight: 500 }}>UID: {u.id.slice(0,8)}...</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td style={{ padding: '1rem' }}>
+                          <p style={{ color: '#cbd5e1', fontSize: '0.9375rem', margin: '0 0 0.25rem', fontWeight: 600 }}>{u.email}</p>
+                          <p style={{ color: '#64748b', fontSize: '0.8125rem', margin: 0, fontWeight: 500 }}>{u.phone || 'No Phone Registered'}</p>
+                        </td>
+                        <td style={{ padding: '1rem' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                            <span style={{ alignSelf: 'flex-start', fontSize: '0.75rem', padding: '3px 10px', borderRadius: '6px', fontWeight: 800, textTransform: 'uppercase',
+                              background: u.role === 'admin' ? 'rgba(245,158,11,0.12)' : u.role === 'department_head' ? 'rgba(168,85,247,0.12)' : 'rgba(56,189,248,0.12)',
+                              color: u.role === 'admin' ? '#f59e0b' : u.role === 'department_head' ? '#a855f7' : '#38bdf8' }}>
+                              {u.role?.replace(/_/g, ' ')}
+                            </span>
+                            {u.departments && (
+                              <span style={{ fontSize: '0.8125rem', color: '#a855f7', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                <FiBriefcase size={12} /> {u.departments.name}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ padding: '1rem', color: '#64748b', fontSize: '0.875rem', fontWeight: 600 }}>{u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
+                        <td style={{ padding: '1rem', borderTopRightRadius: '10px', borderBottomRightRadius: '10px' }}>
+                          {profile?.role === 'admin' && u.id !== profile?.id && u.role !== 'pending_dept_head' && (
+                            <div style={{ display: 'flex', gap: '0.5rem', flexDirection: 'row', alignItems: 'center' }}>
+                              <select 
+                                value={u.role} 
+                                onChange={e => handleRoleChange(u.id, e.target.value, u.department_id)}
+                                style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(51,65,85,0.6)', background: 'rgba(0,0,0,0.3)', color: '#f0f6fc', fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer' }}>
+                                <option value="citizen">Citizen</option>
+                                <option value="admin">Admin</option>
+                                <option value="department_head">Dept Head</option>
+                              </select>
+                              
                               <select 
                                 value={u.department_id || ''} 
-                                onChange={e => handleRoleChange(u.id, 'department_head', e.target.value)}
-                                style={{ padding: '0.375rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(168,85,247,0.4)', background: 'rgba(168,85,247,0.08)', color: '#c084fc', fontSize: '0.75rem', fontWeight: 500 }}>
-                                <option value="" disabled>Assign Dept...</option>
+                                onChange={e => handleRoleChange(u.id, u.role, e.target.value)}
+                                style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: `1px solid ${u.department_id ? 'rgba(168,85,247,0.4)' : 'rgba(51,65,85,0.6)'}`, 
+                                  background: u.department_id ? 'rgba(168,85,247,0.06)' : 'rgba(0,0,0,0.3)', 
+                                  color: u.department_id ? '#a855f7' : '#94a3b8', 
+                                  fontSize: '0.875rem', fontWeight: 700, cursor: 'pointer', maxWidth: '180px' }}>
+                                <option value="">No Dept Assigned</option>
                                 {departments.map(d => (
                                   <option key={d.id} value={d.id}>{d.name}</option>
                                 ))}
                               </select>
-                            )}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}

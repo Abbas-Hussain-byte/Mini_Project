@@ -6,8 +6,47 @@ const { getOptimalAllocation, recalculatePriorities } = require('../services/pri
  */
 exports.getNotifications = async (req, res, next) => {
   try {
-    res.json({ notifications: [] });
-  } catch (err) { next(err); }
+    // 1. Fetch new complaints (submitted)
+    // 2. Fetch critical severity complaints
+    // 3. Fetch complaints pending verification
+    const { data: complaints, error } = await supabaseAdmin
+      .from('complaints')
+      .select('id, title, severity, status, created_at, category')
+      .or('status.eq.submitted,severity.eq.critical,status.eq.pending_verification')
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (error) throw error;
+
+    const notifications = (complaints || []).map(c => {
+      let type = 'status_update';
+      let title = 'Notification';
+      if (c.status === 'submitted') {
+        type = 'critical';
+        title = 'New Complaint Submitted';
+      } else if (c.status === 'pending_verification') {
+        type = 'verification';
+        title = 'Resolution Needs Verification';
+      } else if (c.severity === 'critical') {
+        type = 'critical';
+        title = 'Critical Issue Alert';
+      }
+
+      return {
+        id: c.id,
+        type,
+        title,
+        body: `${c.title} (${c.category?.replace(/_/g, ' ') || 'General'})`,
+        time: c.created_at,
+        link: `/dashboard?id=${c.id}`
+      };
+    });
+
+    res.json({ notifications });
+  } catch (err) { 
+    console.error('getNotifications error:', err);
+    res.json({ notifications: [] }); 
+  }
 };
 
 /**
