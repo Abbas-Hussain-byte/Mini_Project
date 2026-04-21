@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { departmentsAPI, complaintsAPI } from '../services/api';
-import { FiBriefcase, FiUsers, FiClock, FiCheckCircle, FiAlertTriangle, FiTrendingUp, FiPhone, FiMail, FiUser, FiPlus, FiTrash2, FiEdit2, FiMessageSquare, FiUserPlus  } from 'react-icons/fi';
+import { departmentsAPI, complaintsAPI, adminAPI } from '../services/api';
+import { FiBriefcase, FiUsers, FiClock, FiCheckCircle, FiAlertTriangle, FiPhone, FiMail, FiUser, FiPlus, FiTrash2, FiMessageSquare, FiUserPlus, FiMapPin, FiImage, FiHash, FiChevronDown, FiChevronUp, FiCalendar, FiDownload } from 'react-icons/fi';
 
 export default function DepartmentDashboard() {
   const { profile } = useAuth();
@@ -11,16 +11,20 @@ export default function DepartmentDashboard() {
   const [assignments, setAssignments] = useState([]);
   const [workers, setWorkers] = useState([]);
   const [deptComplaints, setDeptComplaints] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [showAddWorker, setShowAddWorker] = useState(false);
   const [newWorker, setNewWorker] = useState({ name: '', phone: '', role: 'field_worker' });
-  const [editingWorker, setEditingWorker] = useState(null);
   const [activeSection, setActiveSection] = useState('overview');
   const [complaintUpdates, setComplaintUpdates] = useState([]);
-  // Worker assignment per complaint
   const [assigningComplaint, setAssigningComplaint] = useState(null);
   const [selectedWorkerIds, setSelectedWorkerIds] = useState([]);
   const [complaintWorkers, setComplaintWorkers] = useState({});
+  const [expandedComplaint, setExpandedComplaint] = useState(null);
+  const [selectedMessagesId, setSelectedMessagesId] = useState(null);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [globalComplaints, setGlobalComplaints] = useState([]);
+  const [collaborationLoading, setCollaborationLoading] = useState(false);
+  const [collabNote, setCollabNote] = useState('');
 
   const isAdmin = profile?.role === 'admin';
   const isDeptHead = profile?.role === 'department_head';
@@ -31,7 +35,17 @@ export default function DepartmentDashboard() {
     setLoading(true);
     try {
       const res = await departmentsAPI.getAll();
-      setDepartments(res.data.departments || res.data || []);
+      const deptList = res.data.departments || res.data || [];
+      setDepartments(deptList);
+
+      // If dept head, auto-select their department
+      if (isDeptHead && profile?.department_id) {
+        const myDept = deptList.find(d => d.id === profile.department_id);
+        if (myDept) {
+          selectDept(myDept);
+          return;
+        }
+      }
     } catch (err) { console.error(err); }
     setLoading(false);
   };
@@ -39,18 +53,19 @@ export default function DepartmentDashboard() {
   const selectDept = useCallback(async (dept) => {
     setSelectedDept(dept.id);
     setActiveSection('overview');
+    setExpandedComplaint(null);
     setLoading(true);
     try {
       const [detailRes, assignRes, workerRes] = await Promise.all([
         departmentsAPI.getById(dept.id).catch(() => ({ data: dept })),
-        departmentsAPI.getAssignments(dept.id, { limit: 30 }).catch(() => ({ data: { assignments: [] } })),
+        departmentsAPI.getAssignments(dept.id, { limit: 50 }).catch(() => ({ data: { assignments: [] } })),
         departmentsAPI.getWorkers(dept.id).catch(() => ({ data: { workers: [] } }))
       ]);
       setDeptDetail(detailRes.data.department || detailRes.data);
       setAssignments(assignRes.data.assignments || []);
       setWorkers(workerRes.data.workers || []);
 
-      const compRes = await complaintsAPI.getAll({ department_id: dept.id, limit: 30 }).catch(() => ({ data: { complaints: [] } }));
+      const compRes = await complaintsAPI.getAll({ department_id: dept.id, limit: 50 }).catch(() => ({ data: { complaints: [] } }));
       const comps = compRes.data.complaints || [];
       setDeptComplaints(comps);
 
@@ -101,13 +116,18 @@ export default function DepartmentDashboard() {
   };
 
   const loadMessages = async (complaintId) => {
+    if (selectedMessagesId === complaintId) {
+      setSelectedMessagesId(null);
+      setComplaintUpdates([]);
+      return;
+    }
+    setSelectedMessagesId(complaintId);
     try {
       const res = await complaintsAPI.getById(complaintId);
       setComplaintUpdates(res.data.complaint?.complaint_updates || []);
     } catch (err) { console.error(err); }
   };
 
-  // Worker assignment per complaint
   const handleAssignWorkers = async (complaintId) => {
     if (selectedWorkerIds.length === 0) return alert('Select at least one worker');
     try {
@@ -124,172 +144,216 @@ export default function DepartmentDashboard() {
     );
   };
 
-  const cardStyle = { background: 'rgba(22, 27, 34, 0.8)', borderRadius: '12px', padding: '1.25rem', border: '1px solid rgba(48, 54, 61, 0.5)' };
-  const inputStyle = { width: '100%', padding: '0.7rem 0.85rem', borderRadius: '8px', border: '1px solid rgba(48,54,61,0.8)', background: 'rgba(0,0,0,0.3)', color: '#f0f6fc', fontSize: '0.9rem', outline: 'none', boxSizing: 'border-box' };
-  const statusColor = (s) => ({ pending: '#8b949e', acknowledged: '#f59e0b', in_progress: '#a855f7', completed: '#2ea043', escalated: '#f85149', submitted: '#8b949e', under_review: '#f59e0b', assigned: '#06b6d4', pending_verification: '#eab308', resolved: '#2ea043' }[s] || '#8b949e');
+  const loadGlobalComplaints = useCallback(async () => {
+    setCollaborationLoading(true);
+    try {
+      const res = await complaintsAPI.getAll({ limit: 100 });
+      setGlobalComplaints(res.data.complaints || []);
+    } catch (err) { console.error('Collab fetch failed:', err); }
+    setCollaborationLoading(false);
+  }, []);
+
+  const handlePostCollabNote = async (complaintId) => {
+    if (!collabNote.trim()) return;
+    try {
+      await complaintsAPI.update(complaintId, { notes: `[COLLAB NOTE] ${collabNote}` });
+      setCollabNote('');
+      loadMessages(complaintId);
+      alert('Message posted to collaboration timeline!');
+    } catch (err) { alert('Failed to post note'); }
+  };
+
+  const handleExport = async (format = 'csv') => {
+    setExportLoading(true);
+    try {
+      const params = { format };
+      if (selectedDept) params.department_id = selectedDept;
+      const res = await adminAPI.exportComplaints(params);
+      const blob = new Blob([res.data], { type: format === 'csv' ? 'text/csv' : 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `department-complaints.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) { alert('Export failed: ' + (err.response?.data?.error || err.message)); }
+    setExportLoading(false);
+  };
+
+  const shortId = (id) => id ? id.substring(0, 8).toUpperCase() : '—';
+
+  // Styles
+  const cardStyle = { background: 'rgba(22, 27, 34, 0.85)', borderRadius: '14px', padding: '1.25rem', border: '1px solid rgba(51, 65, 85, 0.4)', transition: 'all 0.2s' };
+  const inputStyle = { width: '100%', padding: '0.75rem 0.875rem', borderRadius: '10px', border: '1px solid rgba(51, 65, 85, 0.5)', background: 'rgba(0,0,0,0.3)', color: '#f0f6fc', fontSize: '0.875rem', fontWeight: 400, outline: 'none', boxSizing: 'border-box' };
+  const statusColor = (s) => ({ pending: '#64748b', acknowledged: '#f59e0b', in_progress: '#a855f7', completed: '#22c55e', escalated: '#ef4444', submitted: '#64748b', under_review: '#f59e0b', assigned: '#38bdf8', pending_verification: '#eab308', resolved: '#22c55e' }[s] || '#64748b');
+  const sevColor = (s) => ({ critical: '#ef4444', high: '#f59e0b', medium: '#38bdf8', low: '#22c55e' }[s] || '#64748b');
+
+  if (loading && !selectedDept) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #0a0a1a 0%, #0d1117 50%, #0a1a2a 100%)' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: '48px', height: '48px', border: '3px solid rgba(56, 189, 248, 0.2)', borderTop: '3px solid #38bdf8', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto 1rem' }}></div>
+          <p style={{ color: '#64748b', fontSize: '0.875rem' }}>Loading department data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ minHeight: '100vh', padding: '5rem 1rem 2rem', background: 'linear-gradient(135deg, #0a0a1a 0%, #0d1117 50%, #0a1a2a 100%)' }}>
-      <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
-        <h1 style={{ color: '#f0f6fc', fontSize: '1.5rem', marginBottom: '0.25rem' }}>
-          {isDeptHead ? 'Department Head Dashboard' : 'Department Management'}
-        </h1>
-        <p style={{ color: '#8b949e', marginBottom: '1.5rem' }}>
-          {isDeptHead ? 'Manage your department, workers, and assigned complaints' : 'Overview of all city departments, workers, and assignments'}
-        </p>
+    <div style={{ minHeight: '100vh', padding: '5rem 1.25rem 2rem', background: 'linear-gradient(135deg, #0a0a1a 0%, #0d1117 50%, #0a1a2a 100%)' }}>
+      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+        {/* Header */}
+        <div style={{ marginBottom: '1.5rem' }}>
+          <h1 style={{ color: '#f0f6fc', fontSize: '1.75rem', fontWeight: 700, margin: '0 0 0.375rem' }}>
+            {isDeptHead ? '🏣 Department Dashboard' : '🏣 Department Management'}
+          </h1>
+          <p style={{ color: '#64748b', fontSize: '0.9375rem', margin: 0, fontWeight: 400 }}>
+            {isDeptHead ? `Manage complaints, workers & assignments for your department` : 'Overview of all city departments and their operations'}
+          </p>
+        </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: selectedDept ? '260px 1fr' : '1fr', gap: '1.5rem' }}>
-          {/* Department List */}
-          <div>
-            <h2 style={{ color: '#c9d1d9', fontSize: '0.9rem', marginBottom: '0.75rem' }}>Departments ({departments.length})</h2>
-            {departments.map(dept => (
-              <div key={dept.id} onClick={() => selectDept(dept)}
-                style={{
-                  ...cardStyle, marginBottom: '0.5rem', cursor: 'pointer', padding: '0.85rem 1rem',
-                  borderLeft: `3px solid ${selectedDept === dept.id ? '#06b6d4' : 'transparent'}`,
-                  background: selectedDept === dept.id ? 'rgba(6,182,212,0.05)' : cardStyle.background,
-                  transition: 'all 0.2s'
-                }}>
-                <h3 style={{ color: '#f0f6fc', margin: '0 0 0.1rem', fontSize: '0.9rem' }}>{dept.name}</h3>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <p style={{ color: '#06b6d4', fontSize: '0.7rem', margin: 0 }}>{dept.code}</p>
-                  <span style={{ fontSize: '0.7rem', color: '#8b949e' }}>{dept.workerCount || dept.total_workers || 0} workers</span>
+        <div style={{ display: 'grid', gridTemplateColumns: (isDeptHead && profile?.department_id) ? '1fr' : (selectedDept ? '280px 1fr' : '1fr'), gap: '1.5rem' }}>
+          {/* Department List — hide for scoped dept heads */}
+          {!(isDeptHead && profile?.department_id) && (
+            <div>
+              <h2 style={{ color: '#e2e8f0', fontSize: '0.9375rem', fontWeight: 600, marginBottom: '0.75rem' }}>Departments ({departments.length})</h2>
+              {departments.map(dept => (
+                <div key={dept.id} onClick={() => selectDept(dept)}
+                  style={{
+                    ...cardStyle, marginBottom: '0.5rem', cursor: 'pointer', padding: '0.875rem 1rem',
+                    borderLeft: `3px solid ${selectedDept === dept.id ? '#38bdf8' : 'transparent'}`,
+                    background: selectedDept === dept.id ? 'rgba(56, 189, 248, 0.06)' : cardStyle.background,
+                  }}>
+                  <h3 style={{ color: '#f0f6fc', margin: '0 0 0.25rem', fontSize: '0.9375rem', fontWeight: 600 }}>{dept.name}</h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 500 }}>{dept.code}</span>
+                    <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500 }}>{dept.workerCount || dept.total_workers || 0} workers</span>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
 
           {/* Department Detail Panel */}
           {selectedDept && deptDetail && (
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h2 style={{ color: '#f0f6fc', fontSize: '1.2rem', margin: 0 }}>{deptDetail.name}</h2>
-                <div style={{ display: 'flex', gap: '0.25rem', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '3px' }}>
+              {/* Dept Name & Tabs */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+                <h2 style={{ color: '#f0f6fc', fontSize: '1.25rem', fontWeight: 700, margin: 0 }}>{deptDetail.name}</h2>
+                <div style={{ display: 'flex', gap: '3px', background: 'rgba(0,0,0,0.3)', borderRadius: '10px', padding: '4px' }}>
                   {[
-                    { id: 'overview', label: 'Overview', icon: <FiBriefcase size={13} /> },
-                    { id: 'workers', label: `Workers (${workers.length})`, icon: <FiUsers size={13} /> },
-                    { id: 'complaints', label: `Complaints (${deptComplaints.length})`, icon: <FiAlertTriangle size={13} /> },
+                    { id: 'overview', label: 'Overview', icon: <FiBriefcase size={16} /> },
+                    { id: 'workers', label: `Workers (${workers.length})`, icon: <FiUsers size={16} /> },
+                    { id: 'complaints', label: `Complaints (${deptComplaints.length})`, icon: <FiAlertTriangle size={16} /> },
+                    { id: 'collaboration', label: 'Collaboration Hub', icon: <FiUsers size={16} /> },
                   ].map(sec => (
-                    <button key={sec.id} onClick={() => setActiveSection(sec.id)}
-                      style={{ padding: '0.4rem 0.7rem', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.3rem',
-                        background: activeSection === sec.id ? 'rgba(6,182,212,0.2)' : 'transparent',
-                        color: activeSection === sec.id ? '#06b6d4' : '#8b949e' }}>
+                    <button key={sec.id} onClick={() => { setActiveSection(sec.id); if (sec.id === 'collaboration') loadGlobalComplaints(); }}
+                      style={{
+                        padding: '0.625rem 1rem', borderRadius: '10px', border: 'none', cursor: 'pointer',
+                        fontSize: '0.875rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem',
+                        background: activeSection === sec.id ? 'rgba(56, 189, 248, 0.2)' : 'transparent',
+                        color: activeSection === sec.id ? '#38bdf8' : '#94a3b8',
+                        transition: 'all 0.2s',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px'
+                      }}>
                       {sec.icon} {sec.label}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* OVERVIEW */}
+              {/* ===== OVERVIEW SECTION ===== */}
               {activeSection === 'overview' && (
                 <>
+                  {/* Dept Head Info */}
                   {deptDetail.head_name && (
                     <div style={{ ...cardStyle, marginBottom: '1rem', borderLeft: '3px solid #f59e0b' }}>
-                      <h3 style={{ color: '#f59e0b', margin: '0 0 0.5rem', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <FiUser size={14} /> Department Head
+                      <h3 style={{ color: '#f59e0b', margin: '0 0 0.5rem', fontSize: '0.9375rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <FiUser size={15} /> Department Head
                       </h3>
                       <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-                        <span style={{ color: '#f0f6fc', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FiUser size={12} color="#8b949e" /> {deptDetail.head_name}</span>
-                        {deptDetail.head_email && <span style={{ color: '#c9d1d9', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FiMail size={12} color="#8b949e" /> {deptDetail.head_email}</span>}
-                        {deptDetail.head_phone && <span style={{ color: '#c9d1d9', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FiPhone size={12} color="#8b949e" /> {deptDetail.head_phone}</span>}
+                        <span style={{ color: '#f0f6fc', fontSize: '0.875rem', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.375rem' }}><FiUser size={13} color="#64748b" /> {deptDetail.head_name}</span>
+                        {deptDetail.head_email && <span style={{ color: '#cbd5e1', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}><FiMail size={13} color="#64748b" /> {deptDetail.head_email}</span>}
+                        {deptDetail.head_phone && <span style={{ color: '#cbd5e1', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}><FiPhone size={13} color="#64748b" /> {deptDetail.head_phone}</span>}
                       </div>
                     </div>
                   )}
 
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                  {/* Stats */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '0.75rem', marginBottom: '1.25rem' }}>
                     {[
-                      { label: 'Workers', value: workers.length, icon: <FiUsers />, color: '#06b6d4' },
+                      { label: 'Total Workers', value: workers.length, icon: <FiUsers />, color: '#38bdf8' },
                       { label: 'Active Tasks', value: assignments.filter(a => a.status === 'in_progress' || a.status === 'acknowledged').length, icon: <FiClock />, color: '#a855f7' },
-                      { label: 'Completed', value: assignments.filter(a => a.status === 'completed').length, icon: <FiCheckCircle />, color: '#2ea043' },
-                      { label: 'Overdue', value: assignments.filter(a => a.isOverdue).length, icon: <FiAlertTriangle />, color: '#f85149' },
+                      { label: 'Completed', value: assignments.filter(a => a.status === 'completed').length, icon: <FiCheckCircle />, color: '#22c55e' },
+                      { label: 'Overdue', value: assignments.filter(a => a.isOverdue).length, icon: <FiAlertTriangle />, color: '#ef4444' },
                     ].map((stat, i) => (
-                      <div key={i} style={{ ...cardStyle, textAlign: 'center' }}>
-                        <div style={{ color: stat.color, marginBottom: '0.2rem', fontSize: '1.1rem' }}>{stat.icon}</div>
-                        <p style={{ color: '#f0f6fc', fontSize: '1.3rem', fontWeight: 700, margin: '0 0 0.1rem' }}>{stat.value}</p>
-                        <p style={{ color: '#8b949e', fontSize: '0.7rem', margin: 0 }}>{stat.label}</p>
+                      <div key={i} style={{ ...cardStyle, textAlign: 'center', padding: '1rem' }}>
+                        <div style={{ color: stat.color, marginBottom: '0.375rem', fontSize: '1.25rem' }}>{stat.icon}</div>
+                        <p style={{ color: '#f0f6fc', fontSize: '1.5rem', fontWeight: 700, margin: '0 0 0.125rem' }}>{stat.value}</p>
+                        <p style={{ color: '#64748b', fontSize: '0.75rem', fontWeight: 500, margin: 0 }}>{stat.label}</p>
                       </div>
                     ))}
                   </div>
 
-                  {/* Workers — visible in overview */}
+                  {/* Quick Workers Preview */}
                   <div style={{ ...cardStyle, marginBottom: '1rem' }}>
-                    <h3 style={{ color: '#06b6d4', margin: '0 0 0.5rem', fontSize: '0.9rem' }}>👷 Workers ({workers.length})</h3>
+                    <h3 style={{ color: '#38bdf8', margin: '0 0 0.625rem', fontSize: '0.9375rem', fontWeight: 700 }}>👷 Workers ({workers.length})</h3>
                     {workers.length > 0 ? (
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.4rem' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.5rem' }}>
                         {workers.map(w => (
-                          <div key={w.id} style={{ padding: '0.4rem 0.6rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px' }}>
-                            <p style={{ color: '#f0f6fc', fontSize: '0.8rem', margin: '0 0 0.1rem', fontWeight: 500 }}>{w.name}</p>
-                            <span style={{ fontSize: '0.65rem', color: '#8b949e' }}>{w.role?.replace(/_/g, ' ')} • {w.phone || 'N/A'}</span>
+                          <div key={w.id} style={{ padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px' }}>
+                            <p style={{ color: '#f0f6fc', fontSize: '0.875rem', margin: '0 0 0.125rem', fontWeight: 600 }}>{w.name}</p>
+                            <span style={{ fontSize: '0.75rem', color: '#64748b', fontWeight: 500 }}>{w.role?.replace(/_/g, ' ')} • {w.phone || 'N/A'}</span>
                           </div>
                         ))}
                       </div>
-                    ) : <p style={{ color: '#6e7681', fontSize: '0.8rem' }}>No workers yet</p>}
+                    ) : <p style={{ color: '#475569', fontSize: '0.875rem' }}>No workers added yet</p>}
                   </div>
 
-                  {/* Complaints — visible in overview */}
+                  {/* Quick Complaints Preview */}
                   <div style={{ ...cardStyle, marginBottom: '1rem' }}>
-                    <h3 style={{ color: '#a855f7', margin: '0 0 0.5rem', fontSize: '0.9rem' }}>📋 Complaints ({deptComplaints.length})</h3>
+                    <h3 style={{ color: '#a855f7', margin: '0 0 0.625rem', fontSize: '0.9375rem', fontWeight: 700 }}>📋 Recent Complaints ({deptComplaints.length})</h3>
                     {deptComplaints.length > 0 ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
-                        {deptComplaints.slice(0, 8).map(c => (
-                          <div key={c.id} style={{ padding: '0.4rem 0.6rem', background: 'rgba(0,0,0,0.2)', borderRadius: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div>
-                              <p style={{ color: '#f0f6fc', fontSize: '0.8rem', margin: '0 0 0.1rem' }}>{c.title}</p>
-                              <div style={{ display: 'flex', gap: '0.3rem' }}>
-                                <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.3rem', borderRadius: '3px', background: statusColor(c.status) + '15', color: statusColor(c.status) }}>{c.status?.replace(/_/g, ' ')}</span>
-                                <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.3rem', borderRadius: '3px', background: 'rgba(139,148,158,0.1)', color: '#8b949e' }}>{c.severity}</span>
-                                {(complaintWorkers[c.id] || []).length > 0 && <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.3rem', borderRadius: '3px', background: 'rgba(46,160,67,0.1)', color: '#2ea043' }}>{(complaintWorkers[c.id] || []).length} workers</span>}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+                        {deptComplaints.slice(0, 6).map(c => (
+                          <div key={c.id} style={{ padding: '0.625rem 0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                                <span style={{ fontSize: '0.8125rem', color: '#38bdf8', fontWeight: 600, fontFamily: 'monospace' }}>#{shortId(c.id)}</span>
+                                <p style={{ color: '#f0f6fc', fontSize: '0.875rem', margin: 0, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</p>
+                              </div>
+                              <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '0.8125rem', padding: '2px 8px', borderRadius: '4px', background: statusColor(c.status) + '18', color: statusColor(c.status), fontWeight: 600 }}>{c.status?.replace(/_/g, ' ')}</span>
+                                <span style={{ fontSize: '0.8125rem', padding: '2px 8px', borderRadius: '4px', background: sevColor(c.severity) + '18', color: sevColor(c.severity), fontWeight: 600 }}>{c.severity}</span>
+                                {(complaintWorkers[c.id] || []).length > 0 && <span style={{ fontSize: '0.8125rem', padding: '2px 8px', borderRadius: '4px', background: 'rgba(34,197,94,0.1)', color: '#22c55e', fontWeight: 600 }}>{(complaintWorkers[c.id] || []).length} assigned</span>}
                               </div>
                             </div>
                           </div>
                         ))}
                       </div>
-                    ) : <p style={{ color: '#6e7681', fontSize: '0.8rem' }}>No complaints assigned</p>}
+                    ) : <p style={{ color: '#475569', fontSize: '0.875rem' }}>No complaints assigned</p>}
                   </div>
-
-                  <h3 style={{ color: '#c9d1d9', fontSize: '0.9rem', marginBottom: '0.5rem' }}>Recent Assignments</h3>
-                  {assignments.slice(0, 5).map(a => (
-                    <div key={a.id} style={{ ...cardStyle, marginBottom: '0.5rem', borderLeft: `3px solid ${statusColor(a.status)}`, padding: '0.75rem 1rem' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div>
-                          <p style={{ color: '#f0f6fc', fontSize: '0.85rem', margin: '0 0 0.15rem' }}>{a.complaints?.title || a.assignment_reason || 'Assignment'}</p>
-                          <div style={{ display: 'flex', gap: '0.5rem' }}>
-                            <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: statusColor(a.status) + '20', color: statusColor(a.status) }}>{a.status}</span>
-                            {a.workers_assigned > 0 && <span style={{ fontSize: '0.7rem', color: '#8b949e' }}>{a.workers_assigned} workers</span>}
-                            {a.isOverdue && <span style={{ fontSize: '0.7rem', color: '#f85149' }}>⚠ OVERDUE</span>}
-                          </div>
-                        </div>
-                        {(isDeptHead || isAdmin) && !['completed'].includes(a.status) && (
-                          <select onChange={e => { if (e.target.value) { departmentsAPI.updateAssignment(a.id, { status: e.target.value }).then(() => selectDept({ id: selectedDept })); } e.target.value = ''; }}
-                            defaultValue=""
-                            style={{ padding: '0.3rem 0.4rem', borderRadius: '6px', border: '1px solid rgba(48,54,61,0.8)', background: 'rgba(0,0,0,0.3)', color: '#c9d1d9', fontSize: '0.7rem' }}>
-                            <option value="" disabled>Update...</option>
-                            <option value="acknowledged">Acknowledge</option>
-                            <option value="in_progress">Start Work</option>
-                            <option value="completed">Complete</option>
-                          </select>
-                        )}
-                      </div>
-                    </div>
-                  ))}
                 </>
               )}
 
-              {/* WORKERS SECTION */}
+              {/* ===== WORKERS SECTION ===== */}
               {activeSection === 'workers' && (
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                    <h3 style={{ color: '#c9d1d9', fontSize: '0.9rem', margin: 0 }}>Department Workers ({workers.length})</h3>
+                    <h3 style={{ color: '#e2e8f0', fontSize: '0.9375rem', fontWeight: 700, margin: 0 }}>Department Workers ({workers.length})</h3>
                     {(isAdmin || isDeptHead) && (
                       <button onClick={() => setShowAddWorker(!showAddWorker)}
-                        style={{ padding: '0.4rem 0.75rem', borderRadius: '6px', border: 'none', background: 'rgba(46,160,67,0.2)', color: '#2ea043', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                        <FiPlus size={14} /> Add Worker
+                        style={{ padding: '0.5rem 0.875rem', borderRadius: '8px', border: 'none', background: 'rgba(34, 197, 94, 0.15)', color: '#22c55e', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.375rem', transition: 'all 0.2s' }}>
+                        <FiPlus size={15} /> Add Worker
                       </button>
                     )}
                   </div>
 
                   {showAddWorker && (
-                    <form onSubmit={addWorker} style={{ ...cardStyle, marginBottom: '1rem', borderLeft: '3px solid #2ea043' }}>
+                    <form onSubmit={addWorker} style={{ ...cardStyle, marginBottom: '1rem', borderLeft: '3px solid #22c55e' }}>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
                         <input placeholder="Worker name" value={newWorker.name} onChange={e => setNewWorker(w => ({ ...w, name: e.target.value }))} required style={inputStyle} />
                         <input placeholder="Phone number" value={newWorker.phone} onChange={e => setNewWorker(w => ({ ...w, phone: e.target.value }))} style={inputStyle} />
@@ -300,7 +364,7 @@ export default function DepartmentDashboard() {
                           <option value="supervisor">Supervisor</option>
                           <option value="manager">Manager</option>
                         </select>
-                        <button type="submit" style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: '#2ea043', color: '#fff', fontWeight: 600, cursor: 'pointer' }}>Add</button>
+                        <button type="submit" style={{ padding: '0.5rem 1.25rem', borderRadius: '8px', border: 'none', background: '#22c55e', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.875rem' }}>Add</button>
                       </div>
                     </form>
                   )}
@@ -308,58 +372,95 @@ export default function DepartmentDashboard() {
                   {workers.map(w => (
                     <div key={w.id} style={{ ...cardStyle, marginBottom: '0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
-                        <p style={{ color: '#f0f6fc', fontSize: '0.9rem', margin: '0 0 0.15rem', fontWeight: 500 }}>{w.name}</p>
-                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                          <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: 'rgba(6,182,212,0.1)', color: '#06b6d4' }}>{w.role?.replace(/_/g, ' ')}</span>
-                          {w.phone && <span style={{ fontSize: '0.7rem', color: '#8b949e' }}><FiPhone size={10} /> {w.phone}</span>}
-                          <span style={{ fontSize: '0.7rem', color: '#8b949e' }}>{w.active_assignments || 0} tasks</span>
+                        <p style={{ color: '#f0f6fc', fontSize: '0.9375rem', margin: '0 0 0.25rem', fontWeight: 600 }}>{w.name}</p>
+                        <div style={{ display: 'flex', gap: '0.625rem', alignItems: 'center' }}>
+                          <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '6px', background: 'rgba(56,189,248,0.1)', color: '#38bdf8', fontWeight: 600 }}>{w.role?.replace(/_/g, ' ')}</span>
+                          {w.phone && <span style={{ fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '0.25rem' }}><FiPhone size={11} /> {w.phone}</span>}
+                          <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{w.active_assignments || 0} tasks</span>
                         </div>
                       </div>
-                      <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: '0.375rem', alignItems: 'center' }}>
                         <select value={w.status || 'available'} onChange={e => updateWorkerStatus(w.id, e.target.value)}
-                          style={{ padding: '0.3rem 0.4rem', borderRadius: '6px', border: '1px solid rgba(48,54,61,0.8)', background: 'rgba(0,0,0,0.3)', fontSize: '0.7rem',
-                            color: w.status === 'available' ? '#2ea043' : w.status === 'on_duty' ? '#a855f7' : w.status === 'on_leave' ? '#f59e0b' : '#8b949e' }}>
+                          style={{ padding: '0.375rem 0.5rem', borderRadius: '8px', border: '1px solid rgba(51,65,85,0.5)', background: 'rgba(0,0,0,0.3)', fontSize: '0.75rem', fontWeight: 600,
+                            color: w.status === 'available' ? '#22c55e' : w.status === 'on_duty' ? '#a855f7' : w.status === 'on_leave' ? '#f59e0b' : '#64748b' }}>
                           <option value="available">Available</option>
                           <option value="on_duty">On Duty</option>
                           <option value="on_leave">On Leave</option>
                         </select>
                         {(isAdmin || isDeptHead) && (
                           <button onClick={() => deleteWorker(w.id)}
-                            style={{ padding: '0.3rem', borderRadius: '4px', border: 'none', background: 'rgba(248,81,73,0.1)', color: '#f85149', cursor: 'pointer' }}>
-                            <FiTrash2 size={13} />
+                            style={{ padding: '0.375rem', borderRadius: '6px', border: 'none', background: 'rgba(239,68,68,0.1)', color: '#ef4444', cursor: 'pointer', transition: 'all 0.2s' }}>
+                            <FiTrash2 size={14} />
                           </button>
                         )}
                       </div>
                     </div>
                   ))}
-                  {workers.length === 0 && <p style={{ color: '#8b949e', textAlign: 'center', padding: '1.5rem' }}>No workers in this department yet.</p>}
+                  {workers.length === 0 && <p style={{ color: '#64748b', textAlign: 'center', padding: '2rem', fontSize: '0.9375rem' }}>No workers in this department yet.</p>}
                 </div>
               )}
 
-              {/* COMPLAINTS SECTION (with Worker Assignment) */}
+              {/* ===== COMPLAINTS SECTION — FULL DETAILS ===== */}
               {activeSection === 'complaints' && (
                 <div>
-                  <h3 style={{ color: '#c9d1d9', fontSize: '0.9rem', marginBottom: '0.75rem' }}>Assigned Complaints ({deptComplaints.length})</h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.875rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <h3 style={{ color: '#e2e8f0', fontSize: '0.9375rem', fontWeight: 700, margin: 0 }}>Assigned Complaints ({deptComplaints.length})</h3>
+                    <div style={{ display: 'flex', gap: '0.375rem' }}>
+                      <button onClick={() => handleExport('csv')} disabled={exportLoading}
+                        style={{ padding: '0.4375rem 0.75rem', borderRadius: '7px', border: '1px solid rgba(34,197,94,0.25)', background: 'rgba(34,197,94,0.08)', color: '#22c55e', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', fontWeight: 600 }}>
+                        <FiDownload size={12} /> {exportLoading ? '...' : 'Export CSV'}
+                      </button>
+                      <button onClick={() => handleExport('json')} disabled={exportLoading}
+                        style={{ padding: '0.4375rem 0.75rem', borderRadius: '7px', border: '1px solid rgba(168,85,247,0.25)', background: 'rgba(168,85,247,0.08)', color: '#a855f7', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.75rem', fontWeight: 600 }}>
+                        <FiDownload size={12} /> {exportLoading ? '...' : 'Export JSON'}
+                      </button>
+                    </div>
+                  </div>
 
                   {deptComplaints.map(c => (
-                    <div key={c.id} style={{ ...cardStyle, marginBottom: '0.75rem', borderLeft: `3px solid ${statusColor(c.status)}` }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.5rem' }}>
-                        <div style={{ flex: 1 }}>
-                          <p style={{ color: '#f0f6fc', fontSize: '0.9rem', margin: '0 0 0.2rem', fontWeight: 500 }}>{c.title}</p>
-                          <p style={{ color: '#8b949e', fontSize: '0.8rem', margin: '0 0 0.4rem' }}>{c.description?.slice(0, 100)}</p>
-                          <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                            <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: statusColor(c.status) + '20', color: statusColor(c.status) }}>{c.status?.replace(/_/g, ' ')}</span>
-                            <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: 'rgba(139,148,158,0.1)', color: '#8b949e' }}>{c.severity}</span>
-                            <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: 'rgba(139,148,158,0.1)', color: '#8b949e' }}>{c.category?.replace(/_/g, ' ')}</span>
-                            {c.priority_score > 0 && <span style={{ fontSize: '0.7rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: 'rgba(168,85,247,0.1)', color: '#a855f7' }}>P: {c.priority_score?.toFixed(3)}</span>}
+                    <div key={c.id} style={{ ...cardStyle, marginBottom: '0.875rem', borderLeft: `3px solid ${statusColor(c.status)}` }}>
+                      {/* Complaint Header */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.625rem' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          {/* ID + Title */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.375rem' }}>
+                            <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 700, fontFamily: 'monospace', background: 'rgba(56, 189, 248, 0.1)', padding: '2px 8px', borderRadius: '4px' }}>#{shortId(c.id)}</span>
+                            <h4 style={{ color: '#f0f6fc', fontSize: '1rem', margin: 0, fontWeight: 600 }}>{c.title}</h4>
+                          </div>
+
+                          {/* Description */}
+                          <p style={{ color: '#94a3b8', fontSize: '0.875rem', margin: '0 0 0.5rem', lineHeight: 1.5 }}>
+                            {expandedComplaint === c.id ? c.description : c.description?.slice(0, 150)}{c.description?.length > 150 && expandedComplaint !== c.id ? '...' : ''}
+                          </p>
+
+                          {/* Badges */}
+                          <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap', marginBottom: '0.375rem' }}>
+                            <span style={{ fontSize: '0.75rem', padding: '2px 10px', borderRadius: '6px', background: statusColor(c.status) + '18', color: statusColor(c.status), fontWeight: 600 }}>{c.status?.replace(/_/g, ' ')}</span>
+                            <span style={{ fontSize: '0.75rem', padding: '2px 10px', borderRadius: '6px', background: sevColor(c.severity) + '18', color: sevColor(c.severity), fontWeight: 600 }}>{c.severity}</span>
+                            <span style={{ fontSize: '0.75rem', padding: '2px 10px', borderRadius: '6px', background: 'rgba(100,116,139,0.1)', color: '#94a3b8', fontWeight: 500 }}>{c.category?.replace(/_/g, ' ')}</span>
+                            {c.priority_score > 0 && <span style={{ fontSize: '0.75rem', padding: '2px 10px', borderRadius: '6px', background: 'rgba(168,85,247,0.1)', color: '#a855f7', fontWeight: 600 }}>Priority: {(c.priority_score * 100).toFixed(0)}%</span>}
+                          </div>
+
+
+                          {/* Meta info */}
+                          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', fontSize: '0.75rem', color: '#64748b' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><FiCalendar size={11} /> {new Date(c.created_at).toLocaleDateString()}</span>
+                            {c.address && <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', maxWidth: '250px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><FiMapPin size={11} /> {c.address}</span>}
+                            {c.profiles?.full_name && <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}><FiUser size={11} /> {c.profiles.full_name}</span>}
                           </div>
                         </div>
 
-                        <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                        {/* Action Buttons */}
+                        <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                          <button onClick={() => setExpandedComplaint(expandedComplaint === c.id ? null : c.id)}
+                            style={{ padding: '0.375rem 0.625rem', borderRadius: '6px', border: '1px solid rgba(51,65,85,0.4)', background: 'transparent', color: '#94a3b8', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 500 }}>
+                            {expandedComplaint === c.id ? <><FiChevronUp size={12} /> Less</> : <><FiChevronDown size={12} /> Details</>}
+                          </button>
+
                           {(isDeptHead || isAdmin) && !['resolved', 'rejected', 'duplicate'].includes(c.status) && (
                             <select onChange={e => { if (e.target.value) handleComplaintStatus(c.id, e.target.value); e.target.value = ''; }}
                               defaultValue=""
-                              style={{ padding: '0.35rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(48,54,61,0.8)', background: 'rgba(0,0,0,0.3)', color: '#c9d1d9', fontSize: '0.75rem' }}>
+                              style={{ padding: '0.375rem 0.5rem', borderRadius: '6px', border: '1px solid rgba(51,65,85,0.5)', background: 'rgba(0,0,0,0.3)', color: '#cbd5e1', fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer' }}>
                               <option value="" disabled>Update status...</option>
                               <option value="under_review">Under Review</option>
                               <option value="assigned">Assigned</option>
@@ -370,24 +471,83 @@ export default function DepartmentDashboard() {
 
                           {(isDeptHead || isAdmin) && (
                             <button onClick={() => { setAssigningComplaint(assigningComplaint === c.id ? null : c.id); setSelectedWorkerIds((complaintWorkers[c.id] || []).map(w => w.id)); }}
-                              style={{ padding: '0.35rem 0.6rem', borderRadius: '6px', border: 'none', background: 'rgba(46,160,67,0.15)', color: '#2ea043', cursor: 'pointer', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                              <FiUserPlus size={12} /> Assign Workers
+                              style={{ padding: '0.375rem 0.625rem', borderRadius: '6px', border: 'none', background: 'rgba(34,197,94,0.12)', color: '#22c55e', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                              <FiUserPlus size={12} /> Workers
                             </button>
                           )}
-
-                          <button onClick={() => loadMessages(c.id)} style={{ padding: '0.25rem 0.5rem', borderRadius: '4px', border: 'none', background: 'rgba(168,85,247,0.1)', color: '#a855f7', cursor: 'pointer', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                            <FiMessageSquare size={11} /> Messages
-                          </button>
                         </div>
                       </div>
 
+                      {/* ===== EXPANDED DETAILS ===== */}
+                      {expandedComplaint === c.id && (
+                        <div style={{ marginTop: '0.75rem', padding: '0.875rem', background: 'rgba(0,0,0,0.15)', borderRadius: '10px', borderTop: '1px solid rgba(51,65,85,0.3)' }}>
+                          {/* Full Description */}
+                          <p style={{ color: '#cbd5e1', fontSize: '0.875rem', margin: '0 0 0.75rem', lineHeight: 1.6 }}>{c.description}</p>
+
+                          {/* Photos */}
+                          {c.image_urls?.length > 0 && (
+                            <div style={{ marginBottom: '0.75rem' }}>
+                              <p style={{ color: '#e2e8f0', fontSize: '0.8125rem', margin: '0 0 0.5rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.375rem' }}><FiImage size={14} /> Attached Photos ({c.image_urls.length})</p>
+                              <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', paddingBottom: '0.25rem' }}>
+                                {c.image_urls.map((url, i) => (
+                                  <img key={i} src={url} alt={`Complaint photo ${i + 1}`}
+                                    style={{ width: '140px', height: '140px', borderRadius: '10px', objectFit: 'cover', border: '1px solid rgba(51,65,85,0.4)', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s', flexShrink: 0 }}
+                                    onClick={() => window.open(url, '_blank')}
+                                    onMouseOver={e => { e.target.style.transform = 'scale(1.05)'; e.target.style.boxShadow = '0 8px 24px rgba(0,0,0,0.4)'; }}
+                                    onMouseOut={e => { e.target.style.transform = 'scale(1)'; e.target.style.boxShadow = 'none'; }} />
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Full metadata */}
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                            <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.15)', borderRadius: '8px' }}>
+                              <p style={{ color: '#64748b', fontSize: '0.8125rem', margin: '0 0 0.125rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Complaint ID</p>
+                              <p style={{ color: '#38bdf8', fontSize: '0.8125rem', margin: 0, fontWeight: 700, fontFamily: 'monospace' }}>{c.id}</p>
+                            </div>
+                            <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.15)', borderRadius: '8px' }}>
+                              <p style={{ color: '#64748b', fontSize: '0.8125rem', margin: '0 0 0.125rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Filed By</p>
+                              <p style={{ color: '#e2e8f0', fontSize: '0.8125rem', margin: 0, fontWeight: 500 }}>{c.profiles?.full_name || 'Anonymous'}</p>
+                            </div>
+                            <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.15)', borderRadius: '8px' }}>
+                              <p style={{ color: '#64748b', fontSize: '0.8125rem', margin: '0 0 0.125rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Filed On</p>
+                              <p style={{ color: '#e2e8f0', fontSize: '0.8125rem', margin: 0, fontWeight: 500 }}>{new Date(c.created_at).toLocaleString()}</p>
+                            </div>
+                            {c.address && (
+                              <div style={{ padding: '0.5rem 0.75rem', background: 'rgba(0,0,0,0.15)', borderRadius: '8px', gridColumn: 'span 2' }}>
+                                <p style={{ color: '#64748b', fontSize: '0.8125rem', margin: '0 0 0.125rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Location</p>
+                                <p style={{ color: '#e2e8f0', fontSize: '0.8125rem', margin: 0, fontWeight: 500 }}>{c.address}</p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* AI labels */}
+                          {c.ai_detected_labels?.length > 0 && (
+                            <div style={{ marginBottom: '0.75rem' }}>
+                              <p style={{ color: '#38bdf8', fontSize: '0.8125rem', margin: '0 0 0.375rem', fontWeight: 700 }}>🤖 AI Detected Labels</p>
+                              <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                                {c.ai_detected_labels.map((l, i) => (
+                                  <span key={i} style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '6px', background: 'rgba(56,189,248,0.1)', color: '#38bdf8', fontWeight: 500, border: '1px solid rgba(56,189,248,0.15)' }}>{l.replace(/_/g, ' ')}</span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Messages button */}
+                          <button onClick={() => loadMessages(c.id)} style={{ padding: '0.375rem 0.75rem', borderRadius: '6px', border: 'none', background: 'rgba(168,85,247,0.12)', color: '#a855f7', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                            <FiMessageSquare size={13} /> View Messages & Timeline
+                          </button>
+                        </div>
+                      )}
+
                       {/* Assigned Workers Display */}
                       {(complaintWorkers[c.id] || []).length > 0 && (
-                        <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: 'rgba(46,160,67,0.05)', borderRadius: '6px', border: '1px solid rgba(46,160,67,0.15)' }}>
-                          <p style={{ color: '#2ea043', fontSize: '0.7rem', margin: '0 0 0.3rem', fontWeight: 600 }}>👷 Assigned Workers ({(complaintWorkers[c.id] || []).length})</p>
-                          <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap' }}>
+                        <div style={{ marginTop: '0.625rem', padding: '0.625rem', background: 'rgba(34,197,94,0.04)', borderRadius: '8px', border: '1px solid rgba(34,197,94,0.12)' }}>
+                          <p style={{ color: '#22c55e', fontSize: '0.75rem', margin: '0 0 0.375rem', fontWeight: 700 }}>👷 Assigned Workers ({(complaintWorkers[c.id] || []).length})</p>
+                          <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
                             {(complaintWorkers[c.id] || []).map(w => (
-                              <span key={w.id} style={{ fontSize: '0.7rem', padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(6,182,212,0.1)', color: '#06b6d4', border: '1px solid rgba(6,182,212,0.2)' }}>
+                              <span key={w.id} style={{ fontSize: '0.75rem', padding: '3px 10px', borderRadius: '6px', background: 'rgba(56,189,248,0.08)', color: '#38bdf8', border: '1px solid rgba(56,189,248,0.15)', fontWeight: 500 }}>
                                 {w.name} ({w.role?.replace(/_/g, ' ')}) • {w.phone || 'N/A'}
                               </span>
                             ))}
@@ -397,22 +557,21 @@ export default function DepartmentDashboard() {
 
                       {/* Worker Assignment Panel */}
                       {assigningComplaint === c.id && (
-                        <div style={{ marginTop: '0.5rem', padding: '0.75rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', border: '1px solid rgba(46,160,67,0.2)' }}>
-                          <p style={{ color: '#2ea043', fontSize: '0.8rem', margin: '0 0 0.5rem', fontWeight: 600 }}>Select workers to assign:</p>
+                        <div style={{ marginTop: '0.625rem', padding: '0.875rem', background: 'rgba(0,0,0,0.2)', borderRadius: '10px', border: '1px solid rgba(34,197,94,0.2)' }}>
+                          <p style={{ color: '#22c55e', fontSize: '0.875rem', margin: '0 0 0.625rem', fontWeight: 700 }}>Select workers to assign:</p>
                           {workers.length > 0 ? (
                             <>
-                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.5rem', maxHeight: '200px', overflowY: 'auto' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem', marginBottom: '0.625rem', maxHeight: '220px', overflowY: 'auto' }}>
                                 {workers.map(w => (
-                                  <label key={w.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.5rem', borderRadius: '6px', cursor: 'pointer',
-                                    background: selectedWorkerIds.includes(w.id) ? 'rgba(46,160,67,0.1)' : 'transparent',
-                                    border: `1px solid ${selectedWorkerIds.includes(w.id) ? 'rgba(46,160,67,0.3)' : 'rgba(48,54,61,0.3)'}` }}>
-                                    <input type="checkbox" checked={selectedWorkerIds.includes(w.id)} onChange={() => toggleWorkerSelection(w.id)} style={{ accentColor: '#2ea043' }} />
-                                    <span style={{ color: '#f0f6fc', fontSize: '0.85rem' }}>{w.name}</span>
-                                    <span style={{ color: '#8b949e', fontSize: '0.7rem' }}>{w.role?.replace(/_/g, ' ')}</span>
-                                    <span style={{ color: '#6e7681', fontSize: '0.7rem' }}>{w.phone || ''}</span>
-                                    <span style={{ fontSize: '0.6rem', padding: '0.1rem 0.3rem', borderRadius: '3px', marginLeft: 'auto',
-                                      background: w.status === 'available' ? 'rgba(46,160,67,0.15)' : w.status === 'on_duty' ? 'rgba(168,85,247,0.15)' : 'rgba(245,158,11,0.15)',
-                                      color: w.status === 'available' ? '#2ea043' : w.status === 'on_duty' ? '#a855f7' : '#f59e0b' }}>
+                                  <label key={w.id} style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', padding: '0.5rem 0.625rem', borderRadius: '8px', cursor: 'pointer',
+                                    background: selectedWorkerIds.includes(w.id) ? 'rgba(34,197,94,0.08)' : 'transparent',
+                                    border: `1px solid ${selectedWorkerIds.includes(w.id) ? 'rgba(34,197,94,0.25)' : 'rgba(51,65,85,0.3)'}` }}>
+                                    <input type="checkbox" checked={selectedWorkerIds.includes(w.id)} onChange={() => toggleWorkerSelection(w.id)} style={{ accentColor: '#22c55e' }} />
+                                    <span style={{ color: '#f0f6fc', fontSize: '0.875rem', fontWeight: 500 }}>{w.name}</span>
+                                    <span style={{ color: '#64748b', fontSize: '0.75rem' }}>{w.role?.replace(/_/g, ' ')}</span>
+                                    <span style={{ fontSize: '0.8125rem', padding: '2px 6px', borderRadius: '4px', marginLeft: 'auto',
+                                      background: w.status === 'available' ? 'rgba(34,197,94,0.12)' : w.status === 'on_duty' ? 'rgba(168,85,247,0.12)' : 'rgba(245,158,11,0.12)',
+                                      color: w.status === 'available' ? '#22c55e' : w.status === 'on_duty' ? '#a855f7' : '#f59e0b', fontWeight: 600 }}>
                                       {w.status || 'available'}
                                     </span>
                                   </label>
@@ -420,37 +579,120 @@ export default function DepartmentDashboard() {
                               </div>
                               <div style={{ display: 'flex', gap: '0.5rem' }}>
                                 <button onClick={() => handleAssignWorkers(c.id)}
-                                  style={{ padding: '0.4rem 0.75rem', borderRadius: '6px', border: 'none', background: '#2ea043', color: '#fff', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}>
+                                  style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: 'none', background: '#22c55e', color: '#fff', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 700 }}>
                                   Assign {selectedWorkerIds.length} Worker(s)
                                 </button>
                                 <button onClick={() => { setAssigningComplaint(null); setSelectedWorkerIds([]); }}
-                                  style={{ padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid rgba(48,54,61,0.8)', background: 'transparent', color: '#8b949e', cursor: 'pointer', fontSize: '0.8rem' }}>
+                                  style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid rgba(51,65,85,0.5)', background: 'transparent', color: '#64748b', cursor: 'pointer', fontSize: '0.8125rem', fontWeight: 500 }}>
                                   Cancel
                                 </button>
                               </div>
                             </>
-                          ) : <p style={{ color: '#6e7681', fontSize: '0.8rem' }}>No workers available. Add workers first.</p>}
+                          ) : <p style={{ color: '#475569', fontSize: '0.875rem' }}>No workers available. Add workers first.</p>}
+                        </div>
+                      )}
+
+                      {/* Messages panel - MOVED INSIDE LOOP */}
+                      {selectedMessagesId === c.id && (
+                        <div style={{ ...cardStyle, marginTop: '0.875rem', borderLeft: '3px solid #a855f7', background: 'rgba(168,85,247,0.03)' }}>
+                          <h4 style={{ color: '#a855f7', margin: '0 0 0.625rem', fontSize: '0.9375rem', fontWeight: 700 }}>📨 Messages & Timeline</h4>
+                          {complaintUpdates.length > 0 ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                              {complaintUpdates.map((upd, i) => (
+                                <div key={i} style={{ padding: '0.625rem 0.875rem', borderRadius: '8px', background: upd.comment?.includes('[ADMIN MESSAGE]') ? 'rgba(168,85,247,0.08)' : 'rgba(0,0,0,0.15)', borderLeft: `3px solid ${upd.comment?.includes('[ADMIN MESSAGE]') ? '#a855f7' : '#475569'}` }}>
+                                  <p style={{ color: '#f0f6fc', fontSize: '0.875rem', margin: '0 0 0.25rem', lineHeight: 1.5 }}>{upd.comment?.replace('[ADMIN MESSAGE] ', '📩 ')}</p>
+                                  <p style={{ color: '#64748b', fontSize: '0.75rem', margin: 0, fontWeight: 500 }}>
+                                    {upd.profiles?.full_name || 'System'} • {new Date(upd.created_at).toLocaleString()}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p style={{ color: '#64748b', fontSize: '0.875rem', fontStyle: 'italic', margin: '1rem 0' }}>No messages or timeline events found for this complaint.</p>
+                          )}
                         </div>
                       )}
                     </div>
                   ))}
 
-                  {/* Messages panel */}
-                  {complaintUpdates.length > 0 && (
-                    <div style={{ ...cardStyle, marginTop: '1rem', borderLeft: '3px solid #a855f7' }}>
-                      <h4 style={{ color: '#a855f7', margin: '0 0 0.5rem', fontSize: '0.85rem' }}>Messages & Updates</h4>
-                      {complaintUpdates.map((upd, i) => (
-                        <div key={i} style={{ padding: '0.4rem 0.6rem', marginBottom: '0.3rem', borderRadius: '6px', background: upd.comment?.includes('[ADMIN MESSAGE]') ? 'rgba(168,85,247,0.08)' : 'rgba(0,0,0,0.15)', borderLeft: `2px solid ${upd.comment?.includes('[ADMIN MESSAGE]') ? '#a855f7' : '#48535f'}` }}>
-                          <p style={{ color: '#c9d1d9', fontSize: '0.8rem', margin: 0 }}>{upd.comment?.replace('[ADMIN MESSAGE] ', '📩 ')}</p>
-                          <p style={{ color: '#6e7681', fontSize: '0.65rem', margin: '0.1rem 0 0' }}>
-                            {upd.profiles?.full_name || 'System'} • {new Date(upd.created_at).toLocaleString()}
-                          </p>
+                  {deptComplaints.length === 0 && <p style={{ color: '#64748b', textAlign: 'center', padding: '2rem', fontSize: '0.9375rem' }}>No complaints assigned to this department.</p>}
+                </div>
+              )}
+
+              {/* ===== COLLABORATION HUB SECTION ===== */}
+              {activeSection === 'collaboration' && (
+                <div style={{ animation: 'fadeIn 0.4s ease-out' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+                    <div>
+                      <h3 style={{ color: '#f0f6fc', fontSize: '1.125rem', fontWeight: 800, margin: '0 0 0.25rem' }}>CITY-WIDE COLLABORATION</h3>
+                      <p style={{ color: '#64748b', fontSize: '0.875rem', margin: 0 }}>View and coordinate on complaints across all city departments</p>
+                    </div>
+                  </div>
+
+                  {collaborationLoading ? (
+                    <div style={{ padding: '4rem', textAlign: 'center' }}>
+                      <div style={{ width: '32px', height: '32px', border: '2px solid rgba(56,189,248,0.1)', borderTop: '2px solid #38bdf8', borderRadius: '50%', animation: 'spin 1s linear infinite', margin: '0 auto' }}></div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      {globalComplaints.map(c => (
+                        <div key={c.id} style={{ ...cardStyle, borderLeft: `4px solid ${statusColor(c.status)}`, background: 'rgba(255,255,255,0.02)' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '0.375rem' }}>
+                                <span style={{ fontSize: '0.8125rem', color: '#38bdf8', fontWeight: 800, background: 'rgba(56,189,248,0.1)', padding: '2px 8px', borderRadius: '4px' }}>#{shortId(c.id)}</span>
+                                <h4 style={{ color: '#f0f6fc', fontSize: '1.0625rem', margin: 0, fontWeight: 700 }}>{c.title}</h4>
+                                <span style={{ fontSize: '0.75rem', color: '#a855f7', fontWeight: 700, background: 'rgba(168,85,247,0.1)', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase' }}>🏢 {c.departments?.name || 'Unassigned'}</span>
+                              </div>
+                              <p style={{ color: '#94a3b8', fontSize: '0.9375rem', margin: '0 0 0.75rem', lineHeight: 1.5 }}>{c.description?.slice(0, 160)}{c.description?.length > 160 ? '...' : ''}</p>
+                              
+                              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '0.8125rem', padding: '3px 12px', borderRadius: '6px', background: statusColor(c.status) + '22', color: statusColor(c.status), fontWeight: 800 }}>{c.status?.replace(/_/g, ' ')}</span>
+                                <span style={{ fontSize: '0.8125rem', padding: '3px 12px', borderRadius: '6px', background: sevColor(c.severity) + '22', color: sevColor(c.severity), fontWeight: 800 }}>{c.severity}</span>
+                                {c.category && <span style={{ fontSize: '0.8125rem', padding: '3px 12px', borderRadius: '6px', background: 'rgba(100,116,139,0.1)', color: '#cbd5e1', fontWeight: 600 }}>🏷️ {c.category.replace(/_/g, ' ')}</span>}
+                              </div>
+                            </div>
+                            
+                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                              <button onClick={() => loadMessages(c.id)}
+                                style={{ padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid rgba(168,85,247,0.3)', background: 'transparent', color: '#a855f7', cursor: 'pointer', fontSize: '0.875rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                                <FiMessageSquare size={16} /> {selectedMessagesId === c.id ? 'Close' : 'Discuss'}
+                              </button>
+                            </div>
+                          </div>
+
+                          {selectedMessagesId === c.id && (
+                            <div style={{ marginTop: '1rem', padding: '1rem', background: 'rgba(0,0,0,0.2)', borderRadius: '12px', border: '1px solid rgba(168,85,247,0.2)' }}>
+                              <h5 style={{ color: '#a855f7', fontSize: '0.875rem', fontWeight: 800, margin: '0 0 0.75rem', textTransform: 'uppercase' }}>Collaboration Timeline</h5>
+                              
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem', marginBottom: '1rem', maxHeight: '200px', overflowY: 'auto' }}>
+                                {complaintUpdates.length > 0 ? complaintUpdates.map((upd, i) => (
+                                  <div key={i} style={{ padding: '0.75rem', borderRadius: '8px', background: 'rgba(255,255,255,0.03)', borderLeft: `3px solid ${upd.comment?.includes('[COLLAB NOTE]') ? '#a855f7' : '#475569'}` }}>
+                                    <p style={{ color: '#f0f6fc', fontSize: '0.875rem', margin: '0 0 0.25rem' }}>{upd.comment}</p>
+                                    <p style={{ color: '#64748b', fontSize: '0.75rem', margin: 0, fontWeight: 600 }}>{upd.profiles?.full_name || 'System'} • {new Date(upd.created_at).toLocaleString()}</p>
+                                  </div>
+                                )) : <p style={{ color: '#475569', fontSize: '0.875rem', fontStyle: 'italic' }}>No discussion started yet.</p>}
+                              </div>
+
+                              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                <input 
+                                  placeholder="Type collaboration note or update..." 
+                                  value={collabNote}
+                                  onChange={e => setCollabNote(e.target.value)}
+                                  style={{ ...inputStyle, flex: 1, fontSize: '0.875rem' }}
+                                  onKeyPress={e => e.key === 'Enter' && handlePostCollabNote(c.id)}
+                                />
+                                <button onClick={() => handlePostCollabNote(c.id)}
+                                  style={{ padding: '0.5rem 1.25rem', borderRadius: '10px', border: 'none', background: '#a855f7', color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.875rem' }}>
+                                  Post Note
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
                   )}
-
-                  {deptComplaints.length === 0 && <p style={{ color: '#8b949e', textAlign: 'center', padding: '1.5rem' }}>No complaints assigned to this department.</p>}
                 </div>
               )}
             </div>

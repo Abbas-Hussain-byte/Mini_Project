@@ -1,10 +1,11 @@
 """
 CivicPulse — BERT Fine-Tuning Training Script
 Fine-tunes distilbert-base-uncased on civic complaint categories
-using large-scale synthetic data with augmentation.
+using a mix of natural real-world complaints and template-based
+synthetic data with augmentation.
 
 Usage:
-    python train_bert.py                          # Train with synthetic data
+    python train_bert.py                          # Train with synthetic + natural data
     python train_bert.py --data_path data.csv     # Train with real CSV data
     python train_bert.py --epochs 3 --dry-run     # Quick test
 """
@@ -379,19 +380,37 @@ def generate_synthetic_data():
     ]
 
     texts, labels = [], []
+
+    # 1. Add natural complaints (real-world phrasing, NO templates)
+    try:
+        from natural_complaints import NATURAL_COMPLAINTS
+        for category, complaints in NATURAL_COMPLAINTS.items():
+            cat_id = CATEGORY_TO_ID.get(category, CATEGORY_TO_ID['other'])
+            for text in complaints:
+                texts.append(text)
+                labels.append(cat_id)
+                # 3 augmented variants per natural complaint for extra diversity
+                for _ in range(3):
+                    augmented = augment_text(text)
+                    if augmented != text:
+                        texts.append(augmented)
+                        labels.append(cat_id)
+        print(f"   ✅ Loaded {sum(len(v) for v in NATURAL_COMPLAINTS.values())} natural complaints")
+    except ImportError:
+        print("   ⚠️ natural_complaints.py not found, using templates only")
+
+    # 2. Add template-based complaints with location insertion
     for category, tmpls in templates.items():
         for tmpl in tmpls:
             for loc in locations:
                 text = tmpl.format(loc=loc)
                 texts.append(text)
                 labels.append(CATEGORY_TO_ID[category])
-                
-                # Add augmented variants
-                for _ in range(2):
-                    augmented = augment_text(text)
-                    if augmented != text:
-                        texts.append(augmented)
-                        labels.append(CATEGORY_TO_ID[category])
+                # 1 augmented variant per template
+                augmented = augment_text(text)
+                if augmented != text:
+                    texts.append(augmented)
+                    labels.append(CATEGORY_TO_ID[category])
 
     return texts, labels
 

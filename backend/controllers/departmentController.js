@@ -347,7 +347,7 @@ exports.assignWorkersToComplaint = async (req, res, next) => {
     // Get or create assignment for this complaint
     let { data: assignment } = await supabaseAdmin
       .from('department_assignments')
-      .select('id, workers_assigned, assigned_worker_ids')
+      .select('id, workers_assigned, notes')
       .eq('complaint_id', complaintId)
       .eq('department_id', departmentId)
       .single();
@@ -362,7 +362,7 @@ exports.assignWorkersToComplaint = async (req, res, next) => {
           assignment_reason: 'Workers assigned manually',
           assigned_by: 'staff',
           workers_assigned: validWorkers.length,
-          assigned_worker_ids: worker_ids,
+          notes: JSON.stringify({ worker_ids }),
           status: 'acknowledged'
         })
         .select()
@@ -376,7 +376,7 @@ exports.assignWorkersToComplaint = async (req, res, next) => {
         .from('department_assignments')
         .update({
           workers_assigned: validWorkers.length,
-          assigned_worker_ids: worker_ids
+          notes: JSON.stringify({ worker_ids })
         })
         .eq('id', assignment.id);
 
@@ -415,19 +415,30 @@ exports.getComplaintWorkers = async (req, res, next) => {
     // Get assignment for this complaint
     const { data: assignment } = await supabaseAdmin
       .from('department_assignments')
-      .select('id, workers_assigned, assigned_worker_ids')
+      .select('id, workers_assigned, notes')
       .eq('complaint_id', complaintId)
       .eq('department_id', departmentId)
       .single();
 
-    if (!assignment || !assignment.assigned_worker_ids || assignment.assigned_worker_ids.length === 0) {
+    if (!assignment) {
+      return res.json({ workers: [], count: 0 });
+    }
+
+    // Parse worker_ids from notes JSON
+    let workerIds = [];
+    try {
+      const parsed = JSON.parse(assignment.notes || '{}');
+      workerIds = parsed.worker_ids || [];
+    } catch { workerIds = []; }
+
+    if (workerIds.length === 0) {
       return res.json({ workers: [], count: 0 });
     }
 
     const { data: workers } = await supabaseAdmin
       .from('department_workers')
       .select('id, name, phone, role, status')
-      .in('id', assignment.assigned_worker_ids);
+      .in('id', workerIds);
 
     res.json({ workers: workers || [], count: (workers || []).length });
   } catch (err) { next(err); }

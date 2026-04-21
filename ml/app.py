@@ -1,10 +1,10 @@
 """
 CivicPulse ML Service
-Flask API for AI inference: YOLOv8 hazard detection, zero-shot text classification,
+Flask API for AI inference: YOLOv11 hazard detection, zero-shot text classification,
 CLIP multimodal embeddings, and sentence embeddings.
 
 Models chosen for free-tier / CPU deployment:
-  - YOLOv8n (6MB, ~40ms inference)
+  - YOLO11n (5.4MB, SOTA object detection)
   - distilbert-base-uncased-mnli (250MB, ~200ms, 5x faster than BART-large)
   - all-MiniLM-L6-v2 (80MB, ~15ms per sentence)
   - CLIP ViT-B/32 (600MB, loaded lazily)
@@ -37,7 +37,7 @@ models = {
     'sentence_model': None,
 }
 
-# YOLOv8 class names (Kaggle Urban Issues Dataset)
+# YOLOv11 class names (Kaggle Urban Issues Dataset)
 YOLO_CLASSES = [
     'damaged_road', 'pothole', 'illegal_parking', 'broken_road_sign',
     'fallen_trees', 'littering', 'vandalism', 'dead_animal',
@@ -81,28 +81,30 @@ LABEL_TO_CATEGORY = {
 
 # Severity keywords for rule-based fallback
 SEVERITY_KEYWORDS = {
-    'critical': ['fire', 'collapse', 'explosion', 'electrocution', 'flood', 'emergency',
-                 'danger', 'life-threatening', 'sparking', 'exposed wire', 'live wire',
-                 'electric shock', 'high voltage', 'burning'],
-    'high': ['broken', 'damaged', 'fallen', 'exposed wires', 'waterlogging', 'accident',
-             'blocked', 'burst', 'overflow', 'deep pothole', 'major garbage', 'electric',
-             'excess debris', 'sewage', 'wire', 'pole', 'transformer', 'cable',
-             'power line', 'short circuit', 'fallen tree'],
+    'critical': ['collapse', 'emergency', 'life-threatening', 'electrocution', 'fatal',
+                 'major fire', 'explosion', 'toxic', 'flood', 'bridge collapse',
+                 'electric pole', 'damaged pole', 'fallen pole', 'live wire', 'exposed wire',
+                 'electric shock', 'power line', 'high voltage', 'transformer'],
+    'high': ['dangerous', 'hazard', 'injury', 'structural damage', 'exposed',
+             'severe', 'fire', 'broken pipe', 'sinkhole',
+             'electric', 'wire', 'pole', 'concrete damage', 'structural',
+             'crumbling', 'unstable', 'tilting', 'leaning pole'],
     'medium': ['crack', 'pothole', 'garbage', 'debris', 'waste', 'leaking', 'overflow',
-               'noise', 'littering', 'graffiti', 'stray', 'encroach', 'parking'],
+               'noise', 'littering', 'graffiti', 'stray', 'encroach', 'parking',
+               'concrete', 'broken sign'],
     'low': ['minor', 'cosmetic', 'faded', 'uneven', 'small', 'slightly', 'peeling'],
 }
 
 # Inherent minimum severity per category — some issues are always dangerous
 CATEGORY_INHERENT_SEVERITY = {
-    'damaged_electric_wires': 'high',
-    'electricity': 'high',
+    'damaged_electric_wires': 'critical',  # Life-threatening electrical hazard
+    'electricity': 'critical',
     'fallen_trees': 'high',
     'damaged_road': 'medium',
     'pothole': 'medium',
     'vandalism': 'medium',
     'dead_animal': 'medium',
-    'damaged_concrete': 'medium',
+    'damaged_concrete': 'high',            # Structural safety hazard
     'sewage': 'high',
     'drainage': 'medium',
     'water_supply': 'medium',
@@ -114,6 +116,22 @@ CATEGORY_INHERENT_SEVERITY = {
 
 SEVERITY_RANK = {'low': 1, 'medium': 2, 'high': 3, 'critical': 4}
 RANK_TO_SEVERITY = {1: 'low', 2: 'medium', 3: 'high', 4: 'critical'}
+
+# Per-class confidence thresholds:
+# Lower = accept weaker detections (for hard-to-detect classes)
+# Higher = require stronger signal (for noisy/easy classes)
+PER_CLASS_CONF = {
+    'damaged_road': 0.15,
+    'pothole': 0.12,
+    'illegal_parking': 0.12,        # Lowered - undertrained class
+    'broken_road_sign': 0.15,
+    'fallen_trees': 0.12,
+    'littering': 0.18,
+    'vandalism': 0.18,
+    'dead_animal': 0.08,            # Hard to detect - accept weaker signals
+    'damaged_concrete': 0.10,       # Lowered - undertrained class
+    'damaged_electric_wires': 0.08, # Hard to detect - accept weakest signals
+}
 
 # Title templates for image-only mode
 LABEL_TITLES = {
@@ -145,9 +163,9 @@ LABEL_DESCRIPTIONS = {
 
 
 def load_yolo():
-    """Load YOLOv8n model (fine-tuned > HF download > pretrained)"""
+    """Load YOLOv11n model (fine-tuned > HF download > pretrained)"""
     if models['yolo'] is None:
-        print("🔄 Loading YOLOv8n model...")
+        print("[*] Loading YOLOv11n model...")
         from ultralytics import YOLO
         # Check for fine-tuned model first
         finetuned_path = os.path.join(os.path.dirname(__file__), 'models', 'yolo-urban', 'best.pt')
@@ -172,12 +190,12 @@ def load_yolo():
                 if downloaded != dl_path and os.path.exists(downloaded):
                     import shutil
                     shutil.move(downloaded, dl_path)
-                print(f"   ✅ Downloaded fine-tuned model to {dl_path}")
+                print(f"   [OK] Downloaded fine-tuned model to {dl_path}")
                 models['yolo'] = YOLO(dl_path)
             except Exception as hf_err:
-                print(f"   ⚠️ HF download failed ({hf_err}), using pretrained YOLOv8n")
-                models['yolo'] = YOLO('yolov8n.pt')
-        print("✅ YOLOv8n loaded")
+                print(f"   [WARN] HF download failed ({hf_err}), using pretrained YOLOv11n")
+                models['yolo'] = YOLO('yolo11n.pt')
+        print("[OK] YOLOv11n loaded")
     return models['yolo']
 
 
@@ -188,7 +206,7 @@ def load_text_classifier():
         label_map_path = os.path.join(os.path.dirname(__file__), 'models', 'bert-civic', 'label_map.json')
         
         if os.path.exists(finetuned_path) and os.path.exists(label_map_path):
-            print(f"🔄 Loading fine-tuned DistilBERT from: {finetuned_path}")
+            print(f"[*] Loading fine-tuned DistilBERT from: {finetuned_path}")
             from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
             import json
             
@@ -205,9 +223,9 @@ def load_text_classifier():
                 'tokenizer': tokenizer,
                 'id_to_category': {int(k): v for k, v in label_map['id_to_category'].items()},
             }
-            print("✅ Fine-tuned DistilBERT loaded (high accuracy mode)")
+            print("[OK] Fine-tuned DistilBERT loaded (high accuracy mode)")
         else:
-            print("🔄 Loading DistilBERT-MNLI zero-shot classifier (~250MB)...")
+            print("[*] Loading DistilBERT-MNLI zero-shot classifier (~250MB)...")
             from transformers import pipeline
             models['text_classifier'] = {
                 'type': 'zeroshot',
@@ -217,28 +235,28 @@ def load_text_classifier():
                     device=-1  # CPU
                 ),
             }
-            print("✅ Zero-shot DistilBERT classifier loaded")
+            print("[OK] Zero-shot DistilBERT classifier loaded")
     return models['text_classifier']
 
 
 def load_clip():
     """Load CLIP model for multimodal embeddings"""
     if models['clip_model'] is None:
-        print("🔄 Loading CLIP model...")
+        print("[*] Loading CLIP model...")
         from transformers import CLIPModel, CLIPProcessor
         models['clip_model'] = CLIPModel.from_pretrained('openai/clip-vit-base-patch32')
         models['clip_processor'] = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
-        print("✅ CLIP loaded")
+        print("[OK] CLIP loaded")
     return models['clip_model'], models['clip_processor']
 
 
 def load_sentence_model():
     """Load sentence-transformers for text embeddings (80MB, very fast)"""
     if models['sentence_model'] is None:
-        print("🔄 Loading sentence-transformers (all-MiniLM-L6-v2)...")
+        print("[*] Loading sentence-transformers (all-MiniLM-L6-v2)...")
         from sentence_transformers import SentenceTransformer
         models['sentence_model'] = SentenceTransformer('all-MiniLM-L6-v2')
-        print("✅ Sentence model loaded")
+        print("[OK] Sentence model loaded")
     return models['sentence_model']
 
 
@@ -249,7 +267,7 @@ def download_image(url):
         response.raise_for_status()
         return Image.open(io.BytesIO(response.content)).convert('RGB')
     except Exception as e:
-        print(f"❌ Image download failed: {e}")
+        print(f"[ERROR] Image download failed: {e}")
         return None
 
 
@@ -318,7 +336,7 @@ def health():
 
 @app.route('/ml/analyze-image', methods=['POST'])
 def analyze_image():
-    """YOLOv8 hazard detection on uploaded image or image file"""
+    """YOLOv11 hazard detection on uploaded image or image file"""
     try:
         image = None
 
@@ -338,9 +356,9 @@ def analyze_image():
             return jsonify({'error': 'Failed to load image'}), 400
 
         model = load_yolo()
-        # Use lower conf for fine-tuned model (it detects specific urban issues)
-        conf_threshold = 0.15 if os.path.exists(os.path.join(os.path.dirname(__file__), 'models', 'yolo-urban', 'best.pt')) else 0.25
-        results = model(image, conf=conf_threshold, verbose=False)
+        # Use low base conf to catch everything, then filter per-class
+        base_conf = 0.08 if os.path.exists(os.path.join(os.path.dirname(__file__), 'models', 'yolo-urban', 'best.pt')) else 0.25
+        results = model(image, conf=base_conf, verbose=False)
 
         detections = []
         for result in results:
@@ -348,8 +366,13 @@ def analyze_image():
                 cls_id = int(box.cls[0])
                 confidence = float(box.conf[0])
                 label = YOLO_CLASSES[cls_id] if cls_id < len(YOLO_CLASSES) else f'class_{cls_id}'
+                
+                # Per-class confidence filtering
+                min_conf = PER_CLASS_CONF.get(label, 0.15)
+                if confidence < min_conf:
+                    continue
+                    
                 bbox = box.xyxy[0].tolist()
-
                 detections.append({
                     'label': label,
                     'confidence': round(confidence, 4),
@@ -360,11 +383,11 @@ def analyze_image():
         return jsonify({
             'detections': detections,
             'count': len(detections),
-            'model': 'yolov8-finetuned' if conf_threshold == 0.15 else 'yolov8n'
+            'model': 'yolo-finetuned' if base_conf == 0.08 else 'yolo-pretrained'
         })
 
     except Exception as e:
-        print(f"❌ Image analysis error: {e}")
+        print(f"[ERROR] Image analysis error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -435,7 +458,7 @@ def classify_text():
             })
 
     except Exception as e:
-        print(f"❌ Text classification error: {e}")
+        print(f"[ERROR] Text classification error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -473,14 +496,20 @@ def analyze_complete():
         # 1. Image analysis with YOLO
         if image is not None:
             model = load_yolo()
-            # Use lower confidence for fine-tuned model
-            conf_threshold = 0.15 if os.path.exists(os.path.join(os.path.dirname(__file__), 'models', 'yolo-urban', 'best.pt')) else 0.25
+            # Use low base conf, filter per-class
+            conf_threshold = 0.08 if os.path.exists(os.path.join(os.path.dirname(__file__), 'models', 'yolo-urban', 'best.pt')) else 0.25
             yolo_results = model(image, conf=conf_threshold, verbose=False)
             for r in yolo_results:
                 for box in r.boxes:
                     cls_id = int(box.cls[0])
                     conf = float(box.conf[0])
                     label = YOLO_CLASSES[cls_id] if cls_id < len(YOLO_CLASSES) else f'class_{cls_id}'
+                    
+                    # Per-class confidence filtering
+                    min_conf = PER_CLASS_CONF.get(label, 0.15)
+                    if conf < min_conf:
+                        continue
+                        
                     result['detections'].append({
                         'label': label,
                         'confidence': round(conf, 4),
@@ -566,12 +595,12 @@ def analyze_complete():
                     'confidence': round(text_confidence, 4)
                 }
             except Exception as te:
-                print(f"⚠️ Text classification in analyze-complete failed: {te}")
+                print(f"[WARN] Text classification in analyze-complete failed: {te}")
 
         return jsonify(result)
 
     except Exception as e:
-        print(f"❌ Complete analysis error: {e}")
+        print(f"[ERROR] Complete analysis error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -630,7 +659,7 @@ def analyze_video():
         })
 
     except Exception as e:
-        print(f"❌ Video analysis error: {e}")
+        print(f"[ERROR] Video analysis error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -671,12 +700,12 @@ def generate_embeddings():
                             (outputs.image_embeds[0].numpy() + outputs.text_embeds[0].numpy()) / 2
                         ).tolist()
             except Exception as e:
-                print(f"⚠️ CLIP embedding failed: {e}")
+                print(f"[WARN] CLIP embedding failed: {e}")
 
         return jsonify(result)
 
     except Exception as e:
-        print(f"❌ Embedding error: {e}")
+        print(f"[ERROR] Embedding error: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -715,12 +744,12 @@ if __name__ == '__main__':
     debug = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'
 
     print(f"""
-╔══════════════════════════════════════════╗
-║       CivicPulse ML Service              ║
-║       Port: {port}                       ║
-║       Models: Lazy-loaded on first use   ║
-║       YOLO auto-install: DISABLED        ║
-╚══════════════════════════════════════════╝
++==========================================+
+|       CivicPulse ML Service              |
+|       Port: {port}                       |
+|       Models: Lazy-loaded on first use   |
+|       YOLO auto-install: DISABLED        |
++==========================================+
     """)
 
     app.run(host='0.0.0.0', port=port, debug=debug)

@@ -83,7 +83,7 @@ exports.createComplaint = async (req, res, next) => {
         aiDescription = analysisResult.description || aiDescription;
       }
     } catch (aiErr) {
-      console.warn('⚠️ AI analysis failed, proceeding with manual data:', aiErr.message);
+      console.warn('ΓÜá∩╕Å AI analysis failed, proceeding with manual data:', aiErr.message);
     }
 
     // 3. Check for duplicates before inserting
@@ -132,7 +132,7 @@ exports.createComplaint = async (req, res, next) => {
           .eq('id', original.id);
       }
     } catch (dupErr) {
-      console.warn('⚠️ Duplicate check failed:', dupErr.message);
+      console.warn('ΓÜá∩╕Å Duplicate check failed:', dupErr.message);
     }
 
     // 4. Override severity for emergencies
@@ -155,7 +155,7 @@ exports.createComplaint = async (req, res, next) => {
         ai_detected_labels: detectedLabels,
         priority_score: isEmergency ? Math.max(priorityScore, 0.95) : priorityScore,
         duplicate_of: duplicateOf,
-        status: duplicateOf ? 'duplicate' : (isEmergency ? 'escalated' : 'submitted')
+        status: duplicateOf ? 'duplicate' : 'submitted'
       })
       .select()
       .single();
@@ -167,12 +167,12 @@ exports.createComplaint = async (req, res, next) => {
       try {
         await routeToDepartment(complaint);
       } catch (deptErr) {
-        console.warn('⚠️ Department routing failed:', deptErr.message);
+        console.warn('ΓÜá∩╕Å Department routing failed:', deptErr.message);
       }
     }
 
     // 6. Trigger clustering update (async, non-blocking)
-    runClustering().catch(err => console.warn('⚠️ Clustering update failed:', err.message));
+    runClustering().catch(err => console.warn('ΓÜá∩╕Å Clustering update failed:', err.message));
 
     // 6. Fetch the updated complaint with department info
     const { data: fullComplaint } = await supabaseAdmin
@@ -274,7 +274,7 @@ exports.updateComplaint = async (req, res, next) => {
     }
 
     // Valid status transitions
-    const validStatuses = ['submitted', 'under_review', 'assigned', 'in_progress', 'pending_verification', 'resolved', 'rejected'];
+    const validStatuses = ['submitted', 'under_review', 'assigned', 'in_progress', 'pending_verification', 'resolved', 'rejected', 'duplicate', 'escalated'];
     if (status && !validStatuses.includes(status)) {
       return res.status(400).json({ error: `Invalid status. Valid: ${validStatuses.join(', ')}` });
     }
@@ -306,7 +306,14 @@ exports.updateComplaint = async (req, res, next) => {
       .select()
       .single();
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      if (error.message?.includes('complaints_status_check')) {
+        return res.status(400).json({
+          error: `Status "${status}" is not allowed by the database constraint. Please run this SQL in Supabase SQL Editor to fix: ALTER TABLE complaints DROP CONSTRAINT IF EXISTS complaints_status_check; ALTER TABLE complaints ADD CONSTRAINT complaints_status_check CHECK (status IN ('submitted','under_review','assigned','in_progress','pending_verification','resolved','rejected','duplicate','escalated'));`
+        });
+      }
+      return res.status(500).json({ error: error.message });
+    }
 
     // Create audit trail
     await supabaseAdmin
@@ -343,7 +350,7 @@ exports.updateComplaint = async (req, res, next) => {
       }
     }
 
-    console.log(`✅ Complaint ${req.params.id} updated: ${existing.status} → ${status} by ${userRole}`);
+    console.log(`Γ£à Complaint ${req.params.id} updated: ${existing.status} ΓåÆ ${status} by ${userRole}`);
     res.json({ message: 'Complaint updated', complaint: data });
   } catch (err) { next(err); }
 };

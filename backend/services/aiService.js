@@ -2,6 +2,34 @@ const axios = require('axios');
 const FormData = require('form-data');
 const { YOLO_LABEL_MAP, CATEGORY_DANGER_SCORE } = require('../utils/constants');
 
+// Title templates for image-only mode (replicated from ML service)
+const LABEL_TITLES = {
+  'damaged_road': 'Damaged Road Surface Detected — Requires Road Maintenance',
+  'pothole': 'Pothole Detected on Road — Risk of Vehicle Damage',
+  'illegal_parking': 'Illegal Parking Violation — Obstructing Traffic Flow',
+  'broken_road_sign': 'Broken/Missing Road Sign — Traffic Safety Hazard',
+  'fallen_trees': 'Fallen Tree Blocking Area — Urgent Clearance Needed',
+  'littering': 'Littering / Garbage Accumulation — Sanitation Required',
+  'vandalism': 'Vandalism / Property Damage — Law Enforcement Alert',
+  'dead_animal': 'Dead Animal on Road — Biohazard Cleanup Needed',
+  'damaged_concrete': 'Damaged Concrete Structure — Public Works Repair Needed',
+  'damaged_electric_wires': 'Damaged / Exposed Electric Wires — Electrocution Risk',
+};
+
+// Detailed descriptions for image-only auto-generated complaints
+const LABEL_DESCRIPTIONS = {
+  'damaged_road': 'AI analysis detected damaged road surface. The road shows signs of deterioration including cracks, breaks, or surface damage that could be hazardous for vehicles and pedestrians. Requires attention from the Roads & Infrastructure department.',
+  'pothole': 'AI analysis detected a pothole on the road surface. Potholes can cause vehicle damage and accidents, especially at night. Immediate repair recommended by the Roads department.',
+  'illegal_parking': 'AI analysis detected an illegally parked vehicle obstructing normal traffic flow or blocking public access. Traffic enforcement action recommended.',
+  'broken_road_sign': 'AI analysis detected a broken, damaged, or missing road sign. This is a traffic safety concern as missing signage can lead to accidents. Traffic department should replace/repair the sign.',
+  'fallen_trees': 'AI analysis detected a fallen tree blocking the road or public area. This poses an immediate obstruction hazard and needs urgent clearance by the Parks & Environment department.',
+  'littering': 'AI analysis detected littering and garbage accumulation in the area. Sanitation department should arrange for cleanup to maintain public hygiene.',
+  'vandalism': 'AI analysis detected vandalism or property damage. Evidence of intentional destruction of public or private property. Law enforcement notification recommended.',
+  'dead_animal': 'AI analysis detected a dead animal on or near the road. This is a biohazard and sanitation concern requiring prompt removal by the Sanitation department.',
+  'damaged_concrete': 'AI analysis detected damage to a concrete structure such as a sidewalk, wall, or overpass. Public Works department should assess structural integrity and arrange repairs.',
+  'damaged_electric_wires': 'AI analysis detected damaged or exposed electric wires/poles. THIS IS A HIGH-PRIORITY SAFETY HAZARD with risk of electrocution. Electricity department must be notified immediately for emergency repair.',
+};
+
 const ML_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
 
 const SEVERITY_RANK = { 'low': 1, 'medium': 2, 'high': 3, 'critical': 4 };
@@ -54,96 +82,123 @@ async function analyzeComplaint({ title, description, imageUrls, videoUrl, latit
       }
     }
 
+    // Start parallel requests for individual models if the main aggregate endpoint isn't used or fails
+    const fullText = `${title || ''}. ${description || ''}`.trim();
+    const promises = [];
+
     // 1. Image analysis (YOLOv8 hazard detection)
     if (imageUrls && imageUrls.length > 0) {
-      try {
-        const imageResponse = await axios.post(`${ML_URL}/ml/analyze-image`, {
-          image_url: imageUrls[0]
-        }, { timeout: 30000 });
+      promises.push(axios.post(`${ML_URL}/ml/analyze-image`, {
+        image_url: imageUrls[0]
+      }, { timeout: 35000 }).then(res => ({ type: 'image', data: res.data })));
+    } else {
+      promises.push(Promise.resolve({ type: 'image', data: null }));
+    }
 
-        if (imageResponse.data && imageResponse.data.detections) {
-          result.analysis.imageDetections = imageResponse.data.detections;
-          result.detectedLabels = imageResponse.data.detections.map(d => d.label);
+    // 2. Text classification
+    if (fullText.length > 2) {
+      promises.push(axios.post(`${ML_URL}/ml/classify-text`, {
+        text: fullText
+      }, { timeout: 25000 }).then(res => ({ type: 'text', data: res.data })));
+    } else {
+      promises.push(Promise.resolve({ type: 'text', data: null }));
+    }
 
-          const maxConfidence = Math.max(...imageResponse.data.detections.map(d => d.confidence || 0));
-          if (maxConfidence > 0.8) result.analysis.imageSeverity = 'critical';
-          else if (maxConfidence > 0.5) result.analysis.imageSeverity = 'high';
-          else if (maxConfidence > 0.3) result.analysis.imageSeverity = 'medium';
+    // 3. Embeddings
+    promises.push(axios.post(`${ML_URL}/ml/embed`, {
+      text: fullText || 'civic issue',
+      image_url: (imageUrls && imageUrls.length > 0) ? imageUrls[0] : null
+    }, { timeout: 25000 }).then(res => ({ type: 'embed', data: res.data })));
+
+    // Run individual models in PARALLEL to minimize total wait time
+    const promiseResults = await Promise.allSettled(promises);
+
+    // Process Parallel Results
+    promiseResults.forEach(res => {
+      if (res.status === 'fulfilled' && res.value.data) {
+        const { type, data } = res.value;
+        if (type === 'image' && data.detections) {
+          result.analysis.imageDetections = data.detections;
+          result.detectedLabels = data.detections.map(d => d.label);
+          
+          const maxConf = Math.max(...data.detections.map(d => d.confidence || 0));
+          if (maxConf > 0.8) result.analysis.imageSeverity = 'critical';
+          else if (maxConf > 0.5) result.analysis.imageSeverity = 'high';
+          else if (maxConf > 0.3) result.analysis.imageSeverity = 'medium';
           else result.analysis.imageSeverity = 'low';
 
-          // Set category from top YOLO detection
-          if (imageResponse.data.detections.length > 0) {
-            const topDet = imageResponse.data.detections.reduce((a, b) => a.confidence > b.confidence ? a : b);
+          if (data.detections.length > 0) {
+            const topDet = data.detections.reduce((a, b) => a.confidence > b.confidence ? a : b);
             result.analysis.category = topDet.label;
             result.category = topDet.label;
+
+            if (result.title === 'image submission' || result.title === 'Civic Issue Reported') {
+              result.title = LABEL_TITLES[topDet.label] || `${topDet.label.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} Detected`;
+            }
+            if (!result.description || result.description === 'Image-based complaint') {
+              const baseDesc = LABEL_DESCRIPTIONS[topDet.label] || `AI analysis detected ${topDet.label.replace(/_/g, ' ')}.`;
+              result.description = `${baseDesc} Detected with ${(topDet.confidence * 100).toFixed(0)}% confidence.`;
+            }
           }
         }
-      } catch (err) {
-        console.warn('Image analysis failed:', err.message);
-      }
-    }
+        
+        if (type === 'text') {
+          result.analysis.textCategory = data.category;
+          result.analysis.textSeverity = data.severity;
+          result.analysis.textConfidence = data.confidence;
+          if (result.detectedLabels.length === 0 && data.category) {
+            result.detectedLabels = [data.category];
+            result.category = data.category;
+          }
+        }
 
-    // 2. Video analysis
+        if (type === 'embed') {
+          result.analysis.embeddings = {
+            hasTextEmbedding: !!data.text_embedding,
+            hasImageEmbedding: !!data.image_embedding
+          };
+        }
+      } else if (res.status === 'rejected') {
+        console.warn(`Parallel AI step failed: ${res.reason?.message}`);
+      }
+    });
+
+    // 4. Video (Keep separate as it's very heavy and has its own long timeout)
     if (videoUrl) {
       try {
-        const videoResponse = await axios.post(`${ML_URL}/ml/analyze-image`, {
-          image_url: videoUrl
-        }, { timeout: 45000 });
+        const videoResponse = await axios.get(videoUrl, { responseType: 'arraybuffer', timeout: 30000 });
+        const formData = new FormData();
+        formData.append('video', Buffer.from(videoResponse.data), { filename: 'video.mp4', contentType: 'video/mp4' });
 
-        if (videoResponse.data && videoResponse.data.detections) {
-          result.analysis.videoDetections = videoResponse.data.detections;
-          const videoLabels = videoResponse.data.detections.map(d => d.label);
-          result.detectedLabels = [...new Set([...result.detectedLabels, ...videoLabels])];
-        }
-      } catch (err) {
-        console.warn('Video analysis failed:', err.message);
-      }
-    }
+        const mlVideoResponse = await axios.post(`${ML_URL}/ml/analyze-video`, formData, {
+          headers: formData.getHeaders(),
+          timeout: 60000,
+          maxContentLength: 50 * 1024 * 1024
+        });
 
-    // 3. Text classification
-    const fullText = `${title || ''}. ${description || ''}`.trim();
-    if (fullText.length > 2) {
-      try {
-        const textResponse = await axios.post(`${ML_URL}/ml/classify-text`, {
-          text: fullText
-        }, { timeout: 15000 });
-
-        if (textResponse.data) {
-          result.analysis.textCategory = textResponse.data.category;
-          result.analysis.textSeverity = textResponse.data.severity;
-          result.analysis.textConfidence = textResponse.data.confidence;
-
-          if (result.detectedLabels.length === 0 && textResponse.data.category) {
-            result.detectedLabels = [textResponse.data.category];
-            result.category = textResponse.data.category;
+        if (mlVideoResponse.data) {
+          const vDetections = [];
+          if (mlVideoResponse.data.frame_results) {
+            mlVideoResponse.data.frame_results.forEach(fr => fr.detections && vDetections.push(...fr.detections));
           }
+          result.analysis.videoDetections = vDetections;
+          const vLabels = vDetections.map(d => d.label);
+          result.detectedLabels = [...new Set([...result.detectedLabels, ...vLabels])];
+          
+          if (result.detectedLabels.length === 0 && mlVideoResponse.data.aggregated?.top_label) {
+            result.category = mlVideoResponse.data.aggregated.top_label;
+            result.analysis.category = mlVideoResponse.data.aggregated.top_label;
+          }
+          result.analysis.videoSeverity = mlVideoResponse.data.aggregated?.severity || 'medium';
         }
-      } catch (err) {
-        console.warn('Text classification failed:', err.message);
-      }
+      } catch (err) { console.warn('Video analysis failed:', err.message); }
     }
 
-    // 4. Generate embeddings for duplicate detection
-    try {
-      const embedResponse = await axios.post(`${ML_URL}/ml/embed`, {
-        text: fullText || 'civic issue',
-        image_url: imageUrls && imageUrls.length > 0 ? imageUrls[0] : null
-      }, { timeout: 20000 });
-
-      if (embedResponse.data) {
-        result.analysis.embeddings = {
-          hasTextEmbedding: !!embedResponse.data.text_embedding,
-          hasImageEmbedding: !!embedResponse.data.image_embedding
-        };
-      }
-    } catch (err) {
-      console.warn('Embedding generation failed:', err.message);
-    }
-
-    // 5. Calculate combined severity — take the MAX of all severity sources
+    // 5. Calculate combined severity
     const imageSev = SEVERITY_RANK[result.analysis.imageSeverity] || 1;
     const textSev = SEVERITY_RANK[result.analysis.textSeverity] || 1;
-    const combinedSev = Math.max(imageSev, textSev);
+    const videoSev = SEVERITY_RANK[result.analysis.videoSeverity] || 1;
+    const combinedSev = Math.max(imageSev, textSev, videoSev);
     result.severity = RANK_TO_SEVERITY[Math.min(combinedSev, 4)] || 'medium';
 
     // 6. Calculate priority score
