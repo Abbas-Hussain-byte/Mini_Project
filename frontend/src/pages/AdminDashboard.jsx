@@ -492,7 +492,10 @@ export default function AdminDashboard() {
                 </div>
               </div>
             )}
-          </div>        {/* ===== DISASTER RESPONSE TAB ===== */}
+          </div>
+        )}
+
+        {/* ===== DISASTER RESPONSE TAB ===== */}
         {activeTab === 'disaster' && (
           <div style={{ animation: 'fadeIn 0.4s ease-out' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
@@ -563,7 +566,7 @@ export default function AdminDashboard() {
                       🚨 Escalate Now
                     </button>
                   </div>
-                </div>
+                </div> 
               ))}
             </div>
           </div>
@@ -592,7 +595,6 @@ export default function AdminDashboard() {
                 <FiRefreshCw size={16} /> Refresh
               </button>
               <span style={{ color: '#64748b', fontSize: '0.875rem', fontWeight: 600, marginRight: 'auto' }}>({complaints.length} results)</span>
-plaints.length} results)</span>
               {/* Export Buttons */}
               <div style={{ display: 'flex', gap: '0.375rem' }}>
                 <button onClick={() => handleExport('csv')} disabled={exportLoading}

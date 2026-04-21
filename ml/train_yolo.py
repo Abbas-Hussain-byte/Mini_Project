@@ -75,16 +75,40 @@ VALID_CLASS_IDS = set(range(10))  # 0–9
 
 
 def clean_prepared_dir():
-    """Remove and recreate the prepared data directory."""
+    """Remove and recreate the prepared data directory.
+    Handles Windows PermissionError from locked files (YOLO cache, Explorer, etc.)."""
+    import gc, time, stat
+
+    def force_remove(func, path, exc_info):
+        """Error handler for shutil.rmtree — force-remove read-only or locked files."""
+        try:
+            os.chmod(path, stat.S_IWRITE)
+            func(path)
+        except Exception:
+            pass  # Skip files we truly can't delete
+
     if os.path.exists(PREPARED_DIR):
-        print(f"🧹 Cleaning existing prepared data: {PREPARED_DIR}")
-        shutil.rmtree(PREPARED_DIR)
-    
+        print(f"Cleaning existing prepared data: {PREPARED_DIR}")
+        gc.collect()
+        try:
+            shutil.rmtree(PREPARED_DIR, onerror=force_remove)
+        except Exception:
+            # Fallback: Windows rmdir
+            os.system(f'rmdir /s /q "{PREPARED_DIR}" 2>nul')
+            time.sleep(1)
+        if os.path.exists(PREPARED_DIR):
+            # Last resort: try once more after a pause
+            time.sleep(2)
+            try:
+                shutil.rmtree(PREPARED_DIR, onerror=force_remove)
+            except Exception:
+                print("  WARNING: Could not fully clean directory, will overwrite files")
+
     for split in ['train', 'valid', 'test']:
         os.makedirs(os.path.join(PREPARED_DIR, 'images', split), exist_ok=True)
         os.makedirs(os.path.join(PREPARED_DIR, 'labels', split), exist_ok=True)
-    
-    print("📁 Created prepared data directories")
+
+    print("Created prepared data directories")
 
 
 def clean_label_line(line):
