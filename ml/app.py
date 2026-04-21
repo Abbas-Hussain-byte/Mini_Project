@@ -81,28 +81,30 @@ LABEL_TO_CATEGORY = {
 
 # Severity keywords for rule-based fallback
 SEVERITY_KEYWORDS = {
-    'critical': ['fire', 'collapse', 'explosion', 'electrocution', 'flood', 'emergency',
-                 'danger', 'life-threatening', 'sparking', 'exposed wire', 'live wire',
-                 'electric shock', 'high voltage', 'burning'],
-    'high': ['broken', 'damaged', 'fallen', 'exposed wires', 'waterlogging', 'accident',
-             'blocked', 'burst', 'overflow', 'deep pothole', 'major garbage', 'electric',
-             'excess debris', 'sewage', 'wire', 'pole', 'transformer', 'cable',
-             'power line', 'short circuit', 'fallen tree'],
+    'critical': ['collapse', 'emergency', 'life-threatening', 'electrocution', 'fatal',
+                 'major fire', 'explosion', 'toxic', 'flood', 'bridge collapse',
+                 'electric pole', 'damaged pole', 'fallen pole', 'live wire', 'exposed wire',
+                 'electric shock', 'power line', 'high voltage', 'transformer'],
+    'high': ['dangerous', 'hazard', 'injury', 'structural damage', 'exposed',
+             'severe', 'fire', 'broken pipe', 'sinkhole',
+             'electric', 'wire', 'pole', 'concrete damage', 'structural',
+             'crumbling', 'unstable', 'tilting', 'leaning pole'],
     'medium': ['crack', 'pothole', 'garbage', 'debris', 'waste', 'leaking', 'overflow',
-               'noise', 'littering', 'graffiti', 'stray', 'encroach', 'parking'],
+               'noise', 'littering', 'graffiti', 'stray', 'encroach', 'parking',
+               'concrete', 'broken sign'],
     'low': ['minor', 'cosmetic', 'faded', 'uneven', 'small', 'slightly', 'peeling'],
 }
 
 # Inherent minimum severity per category — some issues are always dangerous
 CATEGORY_INHERENT_SEVERITY = {
-    'damaged_electric_wires': 'high',
-    'electricity': 'high',
+    'damaged_electric_wires': 'critical',  # Life-threatening electrical hazard
+    'electricity': 'critical',
     'fallen_trees': 'high',
     'damaged_road': 'medium',
     'pothole': 'medium',
     'vandalism': 'medium',
     'dead_animal': 'medium',
-    'damaged_concrete': 'medium',
+    'damaged_concrete': 'high',            # Structural safety hazard
     'sewage': 'high',
     'drainage': 'medium',
     'water_supply': 'medium',
@@ -119,16 +121,16 @@ RANK_TO_SEVERITY = {1: 'low', 2: 'medium', 3: 'high', 4: 'critical'}
 # Lower = accept weaker detections (for hard-to-detect classes)
 # Higher = require stronger signal (for noisy/easy classes)
 PER_CLASS_CONF = {
-    'damaged_road': 0.18,
-    'pothole': 0.15,
-    'illegal_parking': 0.25,
-    'broken_road_sign': 0.18,
-    'fallen_trees': 0.15,
-    'littering': 0.20,
-    'vandalism': 0.20,
-    'dead_animal': 0.10,            # Hard to detect — accept weaker signals
-    'damaged_concrete': 0.18,
-    'damaged_electric_wires': 0.10, # Hard to detect — accept weaker signals
+    'damaged_road': 0.15,
+    'pothole': 0.12,
+    'illegal_parking': 0.12,        # Lowered - undertrained class
+    'broken_road_sign': 0.15,
+    'fallen_trees': 0.12,
+    'littering': 0.18,
+    'vandalism': 0.18,
+    'dead_animal': 0.08,            # Hard to detect - accept weaker signals
+    'damaged_concrete': 0.10,       # Lowered - undertrained class
+    'damaged_electric_wires': 0.08, # Hard to detect - accept weakest signals
 }
 
 # Title templates for image-only mode
