@@ -166,7 +166,7 @@ exports.getUsers = async (req, res, next) => {
   try {
     const { data, error } = await supabaseAdmin
       .from('profiles')
-      .select('*')
+      .select('*, departments(id, name, code)')
       .order('created_at', { ascending: false });
 
     if (error) return res.status(500).json({ error: error.message });
@@ -180,16 +180,19 @@ exports.getUsers = async (req, res, next) => {
  */
 exports.updateUserRole = async (req, res, next) => {
   try {
-    const { role } = req.body;
-    const validRoles = ['citizen', 'admin', 'department_head'];
+    const { role, department_id } = req.body;
+    const validRoles = ['citizen', 'admin', 'department_head', 'pending_dept_head'];
 
     if (!role || !validRoles.includes(role)) {
       return res.status(400).json({ error: `role must be one of: ${validRoles.join(', ')}` });
     }
 
+    const updateData = { role };
+    if (department_id !== undefined) updateData.department_id = department_id || null;
+
     const { data, error } = await supabaseAdmin
       .from('profiles')
-      .update({ role, updated_at: new Date().toISOString() })
+      .update(updateData)
       .eq('id', req.params.id)
       .select()
       .single();

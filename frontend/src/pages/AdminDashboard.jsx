@@ -159,10 +159,17 @@ export default function AdminDashboard() {
     if (!confirm(`Change this user's role to ${role}?`)) return;
     try {
       const data = { role };
-      if (departmentId) data.department_id = departmentId;
+      if (departmentId !== undefined) data.department_id = departmentId;
       await adminAPI.updateUserRole(userId, data);
       loadData();
     } catch (err) { alert('Role update failed'); }
+  };
+
+  const handleDeptAssign = async (userId, departmentId, currentRole) => {
+    try {
+      await adminAPI.updateUserRole(userId, { role: currentRole, department_id: departmentId || null });
+      loadData();
+    } catch (err) { alert('Department assignment failed: ' + (err.response?.data?.error || err.message)); }
   };
 
   const runBudgetOptimization = async () => {
@@ -1065,7 +1072,7 @@ export default function AdminDashboard() {
                               
                               <select 
                                 value={u.department_id || ''} 
-                                onChange={e => handleRoleChange(u.id, u.role, e.target.value)}
+                                onChange={e => handleDeptAssign(u.id, e.target.value, u.role)}
                                 style={{ padding: '0.5rem 0.75rem', borderRadius: '8px', border: `1px solid ${u.department_id ? 'rgba(168,85,247,0.4)' : 'rgba(51,65,85,0.6)'}`, 
                                   background: u.department_id ? 'rgba(168,85,247,0.06)' : 'rgba(0,0,0,0.3)', 
                                   color: u.department_id ? '#a855f7' : '#94a3b8', 
