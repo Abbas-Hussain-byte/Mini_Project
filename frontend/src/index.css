@@ -185,6 +185,16 @@ button:disabled {
   opacity: 0.6;
 }
 
+/* Fix 'ugly' white patches during autofill */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #1e293b inset !important;
+  -webkit-text-fill-color: #f0f6fc !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
 /* Responsive utilities */
 @media (max-width: 768px) {
   :root {

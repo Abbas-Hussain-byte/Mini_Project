@@ -7,22 +7,22 @@ CivicPulse follows a **3-tier architecture with an AI sidecar**:
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                        FRONTEND                             │
-│              React + TailwindCSS + Leaflet                  │
-│              (Deployed on Vercel)                            │
+│              React + TailwindCSS + Leaflet + Vite           │
+│              (Client-side State & Role-based UI)            │
 └─────────────┬───────────────────────────────┬───────────────┘
-              │ REST API calls                │ Direct DB (auth)
+              │ REST API calls                │ Auth Sync
               ▼                               ▼
 ┌─────────────────────────┐     ┌─────────────────────────────┐
 │     BACKEND (Node.js)   │     │        SUPABASE             │
 │     Express REST API    │◄───►│  PostgreSQL + Auth + Storage│
-│     (Deployed on Render)│     │  (Supabase Free Tier)       │
+│     (Auth Proxy & Logic)│     │  (Core Data & Persistence)  │
 └─────────────┬───────────┘     └─────────────────────────────┘
-              │ HTTP calls
+              │ HTTP / JSON
               ▼
 ┌─────────────────────────┐
 │    ML SERVICE (Python)  │
-│    Flask + ONNX Runtime │
-│    (Deployed on Render) │
+│    Flask AI Sidecar     │
+│    (YOLOv11 + BERT)     │
 └─────────────────────────┘
 ```
 
@@ -42,57 +42,45 @@ CivicPulse follows a **3-tier architecture with an AI sidecar**:
 ## 2. Component Architecture
 
 ```mermaid
-graph TB
-    subgraph "Citizen Interface"
-        A[Complaint Form] --> B[Image Upload]
-        A --> C[Geolocation Capture]
-        A --> D[Category Selection]
-        E[Complaint Tracker] --> F[Status Timeline]
+graph TD
+    subgraph S1 [Stage 1: Input & Geocoding]
+        UI[React Frontend]
+        Geo[Nominatim GIS]
+        UI <--> Geo
     end
 
-    subgraph "Backend API Layer"
-        G[Auth Routes] --> H[Supabase Auth]
-        I[Complaint Routes] --> J[Complaint Controller]
-        K[Analytics Routes] --> L[Analytics Controller]
-        M[CCTV Routes] --> N[CCTV Controller]
-        O[Admin Routes] --> P[Admin Controller]
+    subgraph S2 [Stage 2: Secure Ingestion]
+        API[Express Gateway]
+        Mid[Auth Middleware]
+        API --- Mid
     end
 
-    subgraph "AI Pipeline"
-        Q[Hazard Detector - YOLOv8]
-        R[Text Classifier - BERT]
-        S[Embedding Service - CLIP]
-        T[Duplicate Detector]
-        U[Severity Predictor]
+    subgraph S3 [Stage 3: AI Intelligence Engine]
+        ML[Python AI Sidecar]
+        YOLO[YOLOv11 Vision]
+        BERT[DistilBERT Text]
+        CLIP[CLIP Embeddings]
+        ML --> YOLO
+        ML --> BERT
+        ML --> CLIP
     end
 
-    subgraph "Data Layer"
-        V[(complaints)]
-        W[(complaint_embeddings)]
-        X[(clusters)]
-        Y[(analytics_cache)]
-        Z[Supabase Storage]
+    subgraph S4 [Stage 4: Data & Persistence]
+        DB[(Supabase PostgreSQL)]
+        Store[Cloud Media Storage]
     end
 
-    subgraph "Admin Dashboard"
-        AA[Heatmap View]
-        AB[Statistics Cards]
-        AC[Response Time Charts]
-        AD[Risk Indicators]
-        AE[Budget Prioritizer]
+    subgraph S5 [Stage 5: Automated Dispatch]
+        Alert[Real-time Notifications]
+        Socket[WebSocket / Realtime]
     end
 
-    A -->|submit| I
-    I -->|analyze| Q
-    I -->|classify| R
-    I -->|embed| S
-    S -->|check| T
-    Q -->|severity| U
-    J -->|store| V
-    S -->|store| W
-    L -->|query| V
-    L -->|cluster| X
-    AA -->|read| X
+    %% Pipeline Flow
+    S1 -- "Report/CCTV" --> S2
+    S2 -- "Orchestrate" --> S3
+    S3 -- "Metadata" --> S4
+    S4 -- "Trigger" --> S5
+    S5 -- "Update" --> UI
 ```
 
 ---

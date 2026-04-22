@@ -5,7 +5,7 @@ import { supabase } from '../services/supabase';
 import { FiUser, FiMail, FiPhone, FiLock, FiUserPlus, FiCheckCircle } from 'react-icons/fi';
 
 export default function RegisterPage() {
-  const { user } = useAuth();
+  const { signUp } = useAuth();
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     fullName: '', email: '', phone: '', password: '', confirmPassword: ''
@@ -15,8 +15,8 @@ export default function RegisterPage() {
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    if (user) navigate('/my-dashboard');
-  }, [user, navigate]);
+    // We handle navigation differently for registration (show success message first)
+  }, []);
 
   const handleChange = (field) => (e) => {
     setFormData(prev => ({ ...prev, [field]: e.target.value }));
@@ -38,30 +38,15 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      const { data, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            full_name: formData.fullName,
-            phone: formData.phone
-          }
-        }
-      });
+      const { data, error: authError } = await signUp(
+        formData.email,
+        formData.password,
+        formData.fullName,
+        formData.phone
+      );
 
       if (authError) {
-        if (authError.message.includes('already registered')) {
-          throw new Error('An account with this email already exists. Please log in.');
-        }
         throw authError;
-      }
-
-      // Update profile with phone number
-      if (data.user) {
-        await supabase
-          .from('profiles')
-          .update({ phone: formData.phone, full_name: formData.fullName })
-          .eq('id', data.user.id);
       }
 
       setSuccess(true);

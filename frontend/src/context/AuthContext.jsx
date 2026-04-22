@@ -49,17 +49,52 @@ export function AuthProvider({ children }) {
   };
 
   const signUp = async (email, password, fullName, phone) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: fullName, phone } }
-    });
-    return { data, error };
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, full_name: fullName, phone })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Registration failed');
+      
+      // If backend returns a session, log them in immediately
+      if (data.session) {
+        await supabase.auth.setSession(data.session);
+        setUser(data.user);
+        setProfile(data.profile);
+        localStorage.setItem('access_token', data.session.access_token);
+      }
+      return { data, error: null };
+    } catch (error) {
+      console.error('Signup error:', error);
+      return { data: null, error };
+    }
   };
 
   const signIn = async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    return { data, error };
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Login failed');
+
+      // Crucial: Synchronize Supabase client with the backend's session
+      if (data.session) {
+        await supabase.auth.setSession(data.session);
+        setUser(data.user);
+        setProfile(data.profile);
+        localStorage.setItem('access_token', data.session.access_token);
+      }
+      
+      return { data, error: null };
+    } catch (error) {
+      console.error('Signin error:', error);
+      return { data: null, error };
+    }
   };
 
   const signOut = async () => {
@@ -69,6 +104,21 @@ export function AuthProvider({ children }) {
     localStorage.removeItem('access_token');
   };
 
+  const registerDeptHead = async (email, password, fullName, phone, departmentId) => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/register-dept-head`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, full_name: fullName, phone, department_id: departmentId })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Registration failed');
+      return { data, error: null };
+    } catch (error) {
+      console.error('Dept head registration error:', error);
+      return { data: null, error };
+    }
+  };
   // Separate roles: admin is ONLY admin, isDeptHead is ONLY department_head
   const isAdmin = profile?.role === 'admin';
   const isDeptHead = profile?.role === 'department_head';
@@ -79,7 +129,7 @@ export function AuthProvider({ children }) {
     <AuthContext.Provider value={{
       user, profile, loading,
       isAdmin, isDeptHead, isStaff,
-      signUp, signIn, signOut, fetchProfile
+      signUp, signIn, signOut, registerDeptHead, fetchProfile
     }}>
       {children}
     </AuthContext.Provider>
