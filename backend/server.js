@@ -12,6 +12,7 @@ const analyticsRoutes = require('./routes/analytics');
 const departmentRoutes = require('./routes/departments');
 const cctvRoutes = require('./routes/cctv');
 const adminRoutes = require('./routes/admin');
+const notificationRoutes = require('./routes/notifications');
 
 // Import middleware
 const { errorHandler } = require('./middleware/errorHandler');
@@ -67,6 +68,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/departments', departmentRoutes);
 app.use('/api/cctv', cctvRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // =========================
 // ERROR HANDLING

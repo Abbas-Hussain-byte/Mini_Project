@@ -2,6 +2,7 @@ const { supabaseAdmin } = require('../models/supabaseClient');
 const { analyzeComplaint } = require('../services/aiService');
 const { routeToDepartment } = require('../services/departmentRoutingService');
 const { runClustering } = require('../services/clusteringService');
+const { notifyAdmins, notifyDeptHead, createNotification } = require('../services/notificationService');
 
 /**
  * POST /api/complaints — Create a new complaint
@@ -52,15 +53,15 @@ exports.createComplaint = async (req, res, next) => {
     let detectedLabels = [];
     let severity = req.body.severity || 'medium';
     let priorityScore = 0;
-    let aiTitle = title || 'Civic Issue Reported';
+    let aiTitle = title || 'New Civic Issue Reported';
     let aiDescription = description || '';
     const isEmergency = is_emergency === 'true' || is_emergency === true;
     let aiCategory = category || 'other';
 
     try {
       const analysisResult = await analyzeComplaint({
-        title: title || 'image submission',
-        description: description || 'Image-based complaint',
+        title: title || '',
+        description: description || '',
         imageUrls,
         videoUrl,
         latitude: parseFloat(latitude),
@@ -165,27 +166,46 @@ exports.createComplaint = async (req, res, next) => {
     // 5. Auto-assign to department (skip for duplicates)
     if (!duplicateOf) {
       try {
-        await routeToDepartment(complaint);
+        const routingResult = await routeToDepartment(complaint);
+        // Update local object so notifications and response have the routing info
+        if (routingResult && routingResult.department) {
+          complaint.department_id = routingResult.department.id;
+          complaint.status = 'assigned';
+        }
       } catch (deptErr) {
-        console.warn('ΓÜá∩╕Å Department routing failed:', deptErr.message);
+        console.warn('⚠️ Department routing failed:', deptErr.message);
       }
     }
 
     // 6. Trigger clustering update (async, non-blocking)
     runClustering().catch(err => console.warn('ΓÜá∩╕Å Clustering update failed:', err.message));
 
-    // 6. Fetch the updated complaint with department info
-    const { data: fullComplaint } = await supabaseAdmin
-      .from('complaints')
-      .select('*, departments(name, code)')
-      .eq('id', complaint.id)
-      .single();
+    // 7. Trigger notifications (non-blocking)
+    if (!duplicateOf) {
+      // Notify admins
+      notifyAdmins({
+        type: isEmergency ? 'critical' : 'status_update',
+        title: isEmergency ? 'EMERGENCY ALERT' : 'New Complaint Submitted',
+        body: `${complaint.title} (${complaint.category})`,
+        link: `/dashboard?id=${complaint.id}`
+      });
+
+      // Notify dept head if assigned
+      if (complaint.department_id) {
+        notifyDeptHead(complaint.department_id, {
+          type: 'status_update',
+          title: 'New Assignment',
+          body: `You have been assigned: ${complaint.title}`,
+          link: `/department-assignments?id=${complaint.id}`
+        });
+      }
+    }
 
     res.status(201).json({
       message: duplicateOf
         ? 'Complaint linked as duplicate — original priority boosted!'
         : 'Complaint submitted successfully',
-      complaint: fullComplaint,
+      complaint: complaint,
       duplicate: duplicateInfo,
       aiGenerated: isImageOnly ? { title: aiTitle, description: aiDescription } : null
     });

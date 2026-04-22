@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiBell, FiX, FiAlertTriangle, FiCheckCircle, FiUser, FiMessageSquare, FiClipboard } from 'react-icons/fi';
 import { useAuth } from '../context/AuthContext';
-import { adminAPI } from '../services/api';
+import { notificationsAPI } from '../services/api';
 
 const TYPE_CONFIG = {
   critical:      { color: '#ef4444', bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.2)',  Icon: FiAlertTriangle },
@@ -38,11 +38,13 @@ export default function NotificationBell() {
   const fetchNotifications = useCallback(async () => {
     if (!user) return;
     try {
-      const res = await adminAPI.getNotifications();
+      setLoading(true);
+      const res = await notificationsAPI.getAll();
       setNotifications(res.data.notifications || []);
     } catch (err) {
-      // Silently ignore — notifications are non-critical
-      console.warn('Notifications fetch failed:', err.response?.status, err.message);
+      console.warn('Notifications fetch failed:', err.message);
+    } finally {
+      setLoading(false);
     }
   }, [user]);
 
@@ -64,18 +66,25 @@ export default function NotificationBell() {
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  const markAllRead = () => {
-    const ids = notifications.map(n => n.id);
-    const newRead = new Set([...read, ...ids]);
-    setRead(newRead);
-    localStorage.setItem('notif_read', JSON.stringify([...newRead]));
+  const markAllRead = async () => {
+    try {
+      setNotifications([]);
+      await notificationsAPI.markAllRead();
+    } catch (err) {
+      console.error('Failed to clear all notifications:', err);
+      fetchNotifications(); // Rollback UI if failed
+    }
   };
 
-  const dismissOne = (e, id) => {
-    e.stopPropagation();
-    const newRead = new Set([...read, id]);
-    setRead(newRead);
-    localStorage.setItem('notif_read', JSON.stringify([...newRead]));
+  const dismissOne = async (e, id) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    try {
+      setNotifications(prev => prev.filter(n => n.id !== id));
+      await notificationsAPI.markAsRead(id);
+    } catch (err) {
+      console.error('Failed to dismiss notification:', err);
+      fetchNotifications();
+    }
   };
 
   const handleClick = (notif) => {
@@ -84,7 +93,7 @@ export default function NotificationBell() {
     if (notif.link) navigate(notif.link);
   };
 
-  const unreadCount = notifications.filter(n => !read.has(n.id)).length;
+  const unreadCount = notifications.length; // Now that we filter server-side
 
   if (!user) return null;
 
@@ -272,7 +281,7 @@ export default function NotificationBell() {
               borderTop: '1px solid rgba(51,65,85,0.3)',
               display: 'flex', justifyContent: 'center'
             }}>
-              <button onClick={() => { setNotifications([]); setOpen(false); }} style={{
+              <button onClick={markAllRead} style={{
                 background: 'transparent', border: 'none', color: '#475569',
                 fontSize: '0.75rem', cursor: 'pointer', fontWeight: 500
               }}>

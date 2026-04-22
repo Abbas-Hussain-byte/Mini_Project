@@ -6,30 +6,54 @@ const { getOptimalAllocation, recalculatePriorities } = require('../services/pri
  */
 exports.getNotifications = async (req, res, next) => {
   try {
-    // 1. Fetch new complaints (submitted)
-    // 2. Fetch critical severity complaints
-    // 3. Fetch complaints pending verification
-    const { data: complaints, error } = await supabaseAdmin
+    const userRole = req.user.role;
+    const deptId = req.user.department_id;
+
+    let query = supabaseAdmin
       .from('complaints')
-      .select('id, title, severity, status, created_at, category')
-      .or('status.eq.submitted,severity.eq.critical,status.eq.pending_verification')
+      .select('id, title, severity, status, created_at, category, priority_score, department_id');
+
+    if (userRole === 'department_head' && deptId) {
+      // SCOPED: Dept heads see alerts for their department only
+      // Triggers: New assignment, Needs verification, Critical, or Escalated
+      query = query.eq('department_id', deptId)
+        .or('status.eq.submitted,status.eq.assigned,status.eq.pending_verification,severity.eq.critical,status.eq.escalated');
+    } else {
+      // GLOBAL: Admins see system-wide critical alerts
+      // Triggers: New submission, Needs verification, Critical, Escalated, or Duplicate
+      query = query.or('status.eq.submitted,status.eq.pending_verification,severity.eq.critical,status.eq.escalated,status.eq.duplicate');
+    }
+
+    const { data: complaints, error } = await query
       .order('created_at', { ascending: false })
-      .limit(20);
+      .limit(50); // Increased limit for better visibility
 
     if (error) throw error;
 
     const notifications = (complaints || []).map(c => {
       let type = 'status_update';
       let title = 'Notification';
-      if (c.status === 'submitted') {
+      
+      const isEmergency = c.severity === 'critical' || (c.priority_score && c.priority_score > 0.9);
+
+      if (isEmergency) {
         type = 'critical';
-        title = 'New Complaint Submitted';
+        title = '⚡ EMERGENCY ALERT';
+      } else if (c.status === 'escalated') {
+        type = 'critical';
+        title = '🚨 AUTO-ESCALATED';
       } else if (c.status === 'pending_verification') {
         type = 'verification';
         title = 'Resolution Needs Verification';
-      } else if (c.severity === 'critical') {
-        type = 'critical';
-        title = 'Critical Issue Alert';
+      } else if (c.status === 'submitted') {
+        type = 'status_update';
+        title = 'New Complaint Submitted';
+      } else if (c.status === 'assigned') {
+        type = 'status_update';
+        title = 'New Assignment';
+      } else if (c.status === 'duplicate') {
+         type = 'status_update';
+         title = 'AI Duplicate Merge';
       }
 
       return {

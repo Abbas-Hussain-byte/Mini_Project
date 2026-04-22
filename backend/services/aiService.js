@@ -46,8 +46,8 @@ async function analyzeComplaint({ title, description, imageUrls, videoUrl, latit
     detectedLabels: [],
     severity: 'medium',
     priorityScore: 0,
-    title: title || 'Civic Issue Reported',
-    description: description || '',
+    title: title || 'New Civic Issue Reported',
+    description: description || 'Image-based civic issue report awaiting detailed classification.',
     category: 'other'
   };
 
@@ -132,10 +132,10 @@ async function analyzeComplaint({ title, description, imageUrls, videoUrl, latit
             result.analysis.category = topDet.label;
             result.category = topDet.label;
 
-            if (result.title === 'image submission' || result.title === 'Civic Issue Reported') {
+            if (result.title === 'New Civic Issue Reported' || !result.title) {
               result.title = LABEL_TITLES[topDet.label] || `${topDet.label.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())} Detected`;
             }
-            if (!result.description || result.description === 'Image-based complaint') {
+            if (result.description === 'Image-based civic issue report awaiting detailed classification.' || !result.description) {
               const baseDesc = LABEL_DESCRIPTIONS[topDet.label] || `AI analysis detected ${topDet.label.replace(/_/g, ' ')}.`;
               result.description = `${baseDesc} Detected with ${(topDet.confidence * 100).toFixed(0)}% confidence.`;
             }
@@ -229,18 +229,11 @@ function calculatePriority(severity, analysis) {
   // New formula: category danger is weighted highest (35%)
   // This ensures electric wires (0.95) gets very different score from littering (0.20)
   const priorityScore = (
-//     0.35 * categoryDanger +
-//     0.25 * hazardScore +
-//     0.20 * textScore +
-//     0.10 * recencyScore +
-//     0.10 * confidence
-    
-    0.35 * hazardScore +
-    0.25 * textScore +
-    0.15 * (analysis.confidence || 0.5) +
+    0.35 * categoryDanger +
+    0.25 * hazardScore +
+    0.15 * textScore +
     0.15 * recencyScore +
-    0.10 * 0.5
-
+    0.10 * (analysis.confidence || 0.5)
   );
 
   return parseFloat(Math.min(priorityScore, 1.0).toFixed(4));
