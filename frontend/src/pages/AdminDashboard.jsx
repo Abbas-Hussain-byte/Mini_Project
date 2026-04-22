@@ -160,14 +160,24 @@ export default function AdminDashboard() {
     try {
       const data = { role };
       if (departmentId !== undefined) data.department_id = departmentId;
-      await adminAPI.updateUserRole(userId, data);
+      const res = await adminAPI.updateUserRole(userId, data);
+      // 207 = partial success (role updated, dept assignment needs DB migration)
+      if (res.status === 207 && res.data.warning) {
+        console.warn('Migration needed:', res.data.warning);
+        alert(`✅ ${res.data.message}\n\n⚠️ Department assignment requires a DB migration. Check the browser console for the SQL to run in Supabase.`);
+      }
       loadData();
-    } catch (err) { alert('Role update failed'); }
+    } catch (err) { alert('Role update failed: ' + (err.response?.data?.error || err.message)); }
   };
 
   const handleDeptAssign = async (userId, departmentId, currentRole) => {
     try {
-      await adminAPI.updateUserRole(userId, { role: currentRole, department_id: departmentId || null });
+      const res = await adminAPI.updateUserRole(userId, { role: currentRole, department_id: departmentId || null });
+      if (res.status === 207 && res.data.warning) {
+        // Column missing — show the exact SQL to fix it
+        console.warn('⚠️ Supabase migration needed:\n\n' + res.data.warning);
+        alert(`✅ Role kept.\n\n⚠️ Department assignment needs a one-time DB fix.\n\nRun this in Supabase → SQL Editor:\n\nALTER TABLE profiles ADD COLUMN IF NOT EXISTS department_id UUID REFERENCES departments(id) ON DELETE SET NULL;\n\nThen retry assigning the department.`);
+      }
       loadData();
     } catch (err) { alert('Department assignment failed: ' + (err.response?.data?.error || err.message)); }
   };

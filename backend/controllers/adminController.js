@@ -164,19 +164,38 @@ exports.configurePriorities = async (req, res, next) => {
  */
 exports.getUsers = async (req, res, next) => {
   try {
-    const { data, error } = await supabaseAdmin
+    // Fetch all profiles (no FK join — avoids error if no DB-level FK exists)
+    const { data: profiles, error } = await supabaseAdmin
       .from('profiles')
-      .select('*, departments(id, name, code)')
+      .select('*')
       .order('created_at', { ascending: false });
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      console.error('getUsers profiles error:', error);
+      return res.status(500).json({ error: error.message });
+    }
 
-    res.json({ users: data || [] });
+    // Fetch all departments separately and build a lookup map
+    const { data: departments } = await supabaseAdmin
+      .from('departments')
+      .select('id, name, code')
+      .eq('is_active', true);
+
+    const deptMap = {};
+    (departments || []).forEach(d => { deptMap[d.id] = d; });
+
+    // Manually attach department info to each profile
+    const users = (profiles || []).map(p => ({
+      ...p,
+      departments: p.department_id ? (deptMap[p.department_id] || null) : null
+    }));
+
+    res.json({ users });
   } catch (err) { next(err); }
 };
 
 /**
- * PATCH /api/admin/users/:id/role — Change user role
+ * PATCH /api/admin/users/:id/role — Change user role + optional department assignment
  */
 exports.updateUserRole = async (req, res, next) => {
   try {
@@ -187,15 +206,40 @@ exports.updateUserRole = async (req, res, next) => {
       return res.status(400).json({ error: `role must be one of: ${validRoles.join(', ')}` });
     }
 
+    // Build update — try with department_id first, fall back without it
     const updateData = { role };
     if (department_id !== undefined) updateData.department_id = department_id || null;
 
-    const { data, error } = await supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from('profiles')
       .update(updateData)
       .eq('id', req.params.id)
       .select()
       .single();
+
+    // If it failed because department_id column doesn't exist, retry with role only
+    if (error && error.message.includes('department_id')) {
+      console.warn('⚠️ department_id column missing on profiles. Updating role only. Run migration SQL in Supabase.');
+      const { data: fallbackData, error: fallbackErr } = await supabaseAdmin
+        .from('profiles')
+        .update({ role })
+        .eq('id', req.params.id)
+        .select()
+        .single();
+
+      if (fallbackErr) return res.status(500).json({ error: fallbackErr.message });
+
+      // Also try to store dept on the departments table as head reference
+      if (department_id) {
+        await supabaseAdmin.from('departments').update({ head_email: fallbackData?.email || null }).eq('id', department_id);
+      }
+
+      return res.status(207).json({
+        message: `Role updated to "${role}" ✅`,
+        user: fallbackData,
+        warning: `Department assignment skipped — the 'department_id' column is missing from the profiles table. Fix it by running this SQL in Supabase → SQL Editor:\n\nALTER TABLE profiles ADD COLUMN IF NOT EXISTS department_id UUID REFERENCES departments(id) ON DELETE SET NULL;\n\nThen re-assign the department.`
+      });
+    }
 
     if (error) return res.status(500).json({ error: error.message });
 
