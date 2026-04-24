@@ -409,7 +409,7 @@ def train_yolo(args):
         'translate': 0.1,   # Translation (+/- 10%)
         'scale': 0.5,       # Scale (+/- 50%)  helps detect objects at different sizes
         'fliplr': 0.5,      # Horizontal flip  catches corner objects
-        'flipud': 0.1,      # Vertical flip (low prob for urban scenes)
+        'flipud': 0.0,      # Disabled — vertical flip is unnatural for urban scenes
         'mosaic': 1.0,      # Mosaic augmentation  CRITICAL for small dataset classes
         'mixup': 0.15,      # MixUp augmentation  improves generalization
         'degrees': 5.0,     # Small rotation for robustness
@@ -454,11 +454,11 @@ def train_yolo(args):
         lrf=0.01,              # Final LR fraction
         warmup_epochs=0 if args.fine_tune else 5, # Skip warmup for fine-tuning
         cos_lr=True,           # Cosine LR schedule
-        cls=2.0,               # Boost classification loss weight
+        cls=3.0,               # Boost classification loss weight (increased from 2.0 for better class accuracy)
         box=7.5,               # Standard box loss weight
         verbose=True,
         workers=2,             # High performance data loading (safe for Windows)
-        close_mosaic=15,       # Disable mosaic for last 15 epochs (finer detail learning)
+        close_mosaic=5,        # Disable mosaic for last 5 epochs only (15 caused training collapse)
         amp=True,              # FP16 mixed precision
         cache='disk',          # Cache images to disk for faster data loading
         # Augmentation parameters
