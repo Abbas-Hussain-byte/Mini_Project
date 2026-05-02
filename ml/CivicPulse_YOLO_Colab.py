@@ -175,13 +175,22 @@ TRAIN_DIR = os.path.join(WORK_DIR, 'runs', 'yolo-urban')
 DRIVE_BEST = os.path.join(DRIVE_CHECKPOINT_DIR, 'best.pt')
 DRIVE_LAST = os.path.join(DRIVE_CHECKPOINT_DIR, 'last.pt')
 
+# Fallback: If user has the weights nested in the runs/ folder in Drive
+nested_last = os.path.join(DRIVE_CHECKPOINT_DIR, 'runs', 'yolo-urban', 'weights', 'last.pt')
+if not os.path.exists(DRIVE_LAST) and os.path.exists(nested_last):
+    DRIVE_LAST = nested_last
+    print(f"  [INFO] Found checkpoint in nested folder: {nested_last}")
+
 # Check if we have a checkpoint from a previous session
 resume_from = None
 if os.path.exists(DRIVE_LAST):
     print(f"  [RESUME] Found checkpoint from previous session!")
     print(f"    Copying last.pt from Drive to local...")
     os.makedirs(os.path.join(TRAIN_DIR, 'weights'), exist_ok=True)
-    shutil.copy2(DRIVE_LAST, os.path.join(TRAIN_DIR, 'weights', 'last.pt'))
+    try:
+        shutil.copy2(DRIVE_LAST, os.path.join(TRAIN_DIR, 'weights', 'last.pt'))
+    except shutil.SameFileError:
+        pass  # User used a symlink, so they are the same physical file
     resume_from = os.path.join(TRAIN_DIR, 'weights', 'last.pt')
     print(f"    [OK] Will resume training from checkpoint")
 else:
@@ -202,7 +211,7 @@ else:
 # ========================================
 print(f"\n  Training configuration:")
 print(f"    Image size: 1024px")
-print(f"    Batch size: 16")
+print(f"    Batch size: 4")
 print(f"    Epochs: 100")
 print(f"    Optimizer: AdamW")
 print(f"    close_mosaic: 5 (prevents training collapse)")
@@ -211,11 +220,27 @@ print(f"    AMP: True (FP16 for speed)")
 print(f"    Cache: ram (Colab has plenty)")
 print()
 
+# ========================================
+# Auto-Backup Callback for Free Tier
+# ========================================
+def backup_checkpoint(trainer):
+    """Automatically copy checkpoint to Drive at the end of each epoch."""
+    import shutil, os
+    last_pt = os.path.join(trainer.save_dir, 'weights', 'last.pt')
+    if os.path.exists(last_pt):
+        os.makedirs(DRIVE_CHECKPOINT_DIR, exist_ok=True)
+        try:
+            shutil.copy2(last_pt, DRIVE_LAST)
+        except shutil.SameFileError:
+            pass  # User used a symlink, files are identical
+
+model.add_callback("on_fit_epoch_end", backup_checkpoint)
+
 results = model.train(
     data=yaml_path,
     epochs=100,
     imgsz=1024,              # HIGH RESOLUTION — critical for small objects
-    batch=16,                # Stable gradients — T4 can handle this at 1024px
+    batch=4,                 # Reduced from 16 — T4 needs lower batch for 1024px
     device=0,
     patience=30,             # Don't stop too early
     save=True,
