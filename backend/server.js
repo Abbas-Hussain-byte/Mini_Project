@@ -20,6 +20,17 @@ const { errorHandler } = require('./middleware/errorHandler');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// Trust Render's proxy for express-rate-limit
+app.set('trust proxy', 1);
+
+// Validate critical environment variables on startup
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+  console.error('❌ CRITICAL ERROR: Supabase environment variables are missing!');
+  console.log('Detected URL:', process.env.SUPABASE_URL ? '✅ Present' : '❌ Missing');
+} else {
+  console.log('✅ Supabase configuration detected');
+}
+
 // =========================
 // MIDDLEWARE
 // =========================
