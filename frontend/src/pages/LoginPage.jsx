@@ -5,7 +5,7 @@ import { FiMail, FiLock, FiPhone, FiShield, FiUser } from 'react-icons/fi';
 import { supabase } from '../services/supabase';
 
 export default function LoginPage() {
-  const { user, profile } = useAuth();
+  const { user, profile, signIn, signOut } = useAuth();
   const navigate = useNavigate();
   const [loginType, setLoginType] = useState('citizen'); // 'citizen', 'admin', or 'dept_head'
   const [identifier, setIdentifier] = useState('');
@@ -29,65 +29,37 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      let email = identifier;
-      // Admin login: email is used directly
-
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
+      const { data, error: authError } = await signIn(identifier, password);
 
       if (authError) {
-        if (loginType === 'citizen') {
-          throw new Error('Invalid email or password. Please check and try again.');
-        }
         throw authError;
       }
 
-      // Store token
-      if (data.session) {
-        localStorage.setItem('access_token', data.session.access_token);
-      }
-
       // Check role matches login type
-      const { data: userProfile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', data.user.id)
-        .single();
+      const userProfile = data.profile;
 
       if (loginType === 'admin' && userProfile?.role !== 'admin') {
         setError('This account does not have admin privileges. Use citizen login instead.');
-        await supabase.auth.signOut();
-        localStorage.removeItem('access_token');
+        await signOut();
         setLoading(false);
         return;
       }
 
       if (loginType === 'dept_head' && !['department_head', 'pending_dept_head'].includes(userProfile?.role)) {
         setError('This account is not registered as a department head.');
-        await supabase.auth.signOut();
-        localStorage.removeItem('access_token');
+        await signOut();
         setLoading(false);
         return;
       }
 
       if (userProfile?.role === 'pending_dept_head') {
         setError('Your department head registration is pending admin approval. Please contact the administrator.');
-        await supabase.auth.signOut();
-        localStorage.removeItem('access_token');
+        await signOut();
         setLoading(false);
         return;
       }
 
-      // Navigate based on role
-      if (userProfile?.role === 'admin') {
-        navigate('/dashboard');
-      } else if (userProfile?.role === 'department_head') {
-        navigate('/departments');
-      } else {
-        navigate('/my-dashboard');
-      }
+      // Navigation is handled by the useEffect watching [user, profile]
     } catch (err) {
       setError(err.message || 'Login failed');
     } finally {
@@ -166,7 +138,7 @@ export default function LoginPage() {
             {isAdmin ? 'Admin Login' : isDeptHead ? 'Department Head Login' : 'Citizen Login'}
           </h2>
           <p style={{ color: '#64748b', fontSize: '0.875rem', fontWeight: 400, margin: 0 }}>
-            {isAdmin ? 'Access the administrative dashboard' : isDeptHead ? 'Manage your department, workers & complaints' : 'Sign in with your registered phone number'}
+            {isAdmin ? 'Access the administrative dashboard' : isDeptHead ? 'Manage your department, workers & complaints' : 'Sign in with your registered email address'}
           </p>
         </div>
 

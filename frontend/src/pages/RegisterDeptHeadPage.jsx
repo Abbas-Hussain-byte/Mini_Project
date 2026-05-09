@@ -5,7 +5,7 @@ import { supabase } from '../services/supabase';
 import { FiUser, FiMail, FiPhone, FiLock, FiBriefcase, FiCheckCircle, FiClock } from 'react-icons/fi';
 
 export default function RegisterDeptHeadPage() {
-  const { user } = useAuth();
+  const { user, registerDeptHead } = useAuth();
   const navigate = useNavigate();
   const [departments, setDepartments] = useState([]);
   const [formData, setFormData] = useState({
@@ -20,8 +20,14 @@ export default function RegisterDeptHeadPage() {
   }, [user, navigate]);
 
   useEffect(() => {
-    supabase.from('departments').select('id, name, code').eq('is_active', true)
-      .then(({ data }) => setDepartments(data || []));
+    fetch(`${import.meta.env.VITE_API_URL}/departments`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.departments) {
+          setDepartments(data.departments);
+        }
+      })
+      .catch(err => console.error('Failed to fetch departments:', err));
   }, []);
 
   const handleChange = (field) => (e) => {
@@ -44,29 +50,15 @@ export default function RegisterDeptHeadPage() {
 
     setLoading(true);
     try {
-      const { data, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            full_name: formData.fullName,
-            phone: formData.phone,
-            role: 'department_head'
-          }
-        }
-      });
+      const { data, error: authError } = await registerDeptHead(
+        formData.email,
+        formData.password,
+        formData.fullName,
+        formData.phone,
+        formData.departmentId
+      );
 
       if (authError) throw authError;
-
-      if (data.user) {
-        // Wait briefly for the trigger to create the profile row
-        await new Promise(res => setTimeout(res, 1000));
-        const { error: updateError } = await supabase
-          .from('profiles')
-          .update({ role: 'department_head', full_name: formData.fullName, phone: formData.phone })
-          .eq('id', data.user.id);
-        if (updateError) console.warn('Profile role update failed:', updateError);
-      }
 
       setSuccess(true);
     } catch (err) {

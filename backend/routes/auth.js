@@ -1,6 +1,35 @@
 const router = require('express').Router();
-const { supabase } = require('../models/supabaseClient');
+const { supabase, supabaseAdmin } = require('../models/supabaseClient');
 const { authMiddleware } = require('../middleware/authMiddleware');
+
+/**
+ * Helper to ensure a profile exists and is confirmed
+ * @param {string} userId 
+ * @param {object} profileData 
+ */
+async function syncUserProfile(userId, profileData) {
+  try {
+    // 1. Ensure user is confirmed (bypass email link if dashboard setting missed)
+    await supabaseAdmin.auth.admin.updateUserById(userId, {
+      email_confirm: true
+    }).catch(e => console.warn('Auto-confirm warning:', e.message));
+
+    // 2. Upsert profile (Insert if missing, Update if exists)
+    const { error } = await supabaseAdmin
+      .from('profiles')
+      .upsert({
+        id: userId,
+        ...profileData,
+        updated_at: new Date()
+      }, { onConflict: 'id' });
+
+    if (error) throw error;
+    return true;
+  } catch (err) {
+    console.error('Profile sync error:', err.message);
+    return false;
+  }
+}
 
 // POST /api/auth/register — Citizen registration (email-based)
 router.post('/register', async (req, res, next) => {
@@ -15,19 +44,19 @@ router.post('/register', async (req, res, next) => {
       email,
       password,
       options: {
-        data: { full_name, phone: phone || '' }
+        data: { full_name, phone: phone || '', role: 'citizen' }
       }
     });
 
     if (error) return res.status(400).json({ error: error.message });
 
-    // Update profile with phone number
+    // Ensure profile exists
     if (data.user) {
-      const { supabaseAdmin } = require('../models/supabaseClient');
-      await supabaseAdmin
-        .from('profiles')
-        .update({ phone: phone || '', full_name, role: 'citizen' })
-        .eq('id', data.user.id);
+      await syncUserProfile(data.user.id, {
+        full_name,
+        phone: phone || '',
+        role: 'citizen'
+      });
     }
 
     res.status(201).json({
@@ -47,28 +76,24 @@ router.post('/register-dept-head', async (req, res, next) => {
       return res.status(400).json({ error: 'Email, password, full_name, and department_id are required' });
     }
 
-    // 1. Create Supabase auth user with real email
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { full_name, phone: phone || '', role: 'pending_dept_head' }
+        data: { full_name, phone: phone || '', role: 'pending_dept_head', department_id }
       }
     });
 
     if (error) return res.status(400).json({ error: error.message });
 
-    // 2. Set profile as "pending_dept_head" — NOT department_head yet
-    //    Admin must approve before they become active dept heads
     if (data.user) {
-      const { supabaseAdmin } = require('../models/supabaseClient');
+      await syncUserProfile(data.user.id, {
+        full_name,
+        phone: phone || '',
+        role: 'pending_dept_head'
+      });
 
-      await supabaseAdmin
-        .from('profiles')
-        .update({ role: 'pending_dept_head', phone: phone || '', full_name })
-        .eq('id', data.user.id);
-
-      // Store department_id in user_metadata since profiles table doesn't have that column
+      // Store department_id in app_metadata/user_metadata
       await supabaseAdmin.auth.admin.updateUserById(data.user.id, {
         user_metadata: { full_name, phone: phone || '', role: 'pending_dept_head', department_id }
       }).catch(e => console.warn('dept_head metadata warning:', e.message));
@@ -93,37 +118,51 @@ router.post('/login', async (req, res, next) => {
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
-    if (error) return res.status(401).json({ error: error.message });
+    if (error) {
+      // Specifically handle email confirmation error if auto-confirm failed
+      if (error.message.includes('Email not confirmed')) {
+        return res.status(401).json({ 
+          error: 'Your email is not confirmed. Please check your inbox or contact an admin.',
+          needsConfirmation: true 
+        });
+      }
+      return res.status(401).json({ error: error.message });
+    }
 
-    // Fetch profile with role
-    const { supabaseAdmin } = require('../models/supabaseClient');
+    // Fetch profile
     const { data: profile } = await supabaseAdmin
       .from('profiles')
       .select('*')
       .eq('id', data.user.id)
       .single();
 
-    // Block pending dept heads from accessing the platform
-    if (profile?.role === 'pending_dept_head') {
+    // If profile is missing (legacy user?), create it now
+    if (!profile) {
+      await syncUserProfile(data.user.id, {
+        full_name: data.user.user_metadata?.full_name || 'User',
+        role: data.user.user_metadata?.role || 'citizen'
+      });
+    }
+
+    // Block pending dept heads — Prioritize Database role over user_metadata
+    const effectiveRole = profile?.role || data.user.user_metadata?.role;
+    if (effectiveRole === 'pending_dept_head') {
       return res.status(403).json({
-        error: 'Your department head registration is pending admin approval. Please contact the administrator.',
+        error: 'Your department head registration is pending admin approval.',
         pendingApproval: true
       });
     }
 
-    // Sync profile role → user_metadata so authMiddleware fallback always works
-    const dbRole = profile?.role || 'citizen';
-    const metaRole = data.user.user_metadata?.role;
-    if (dbRole !== metaRole) {
-      // Silently update user_metadata to match profile table
-      await supabaseAdmin.auth.admin.updateUserById(data.user.id, {
-        user_metadata: { ...data.user.user_metadata, role: dbRole }
-      }).catch(e => console.warn('Role sync warning:', e.message));
+    // Auto-sync metadata if it's out of date (helps frontend role checks)
+    if (profile?.role && profile.role !== data.user.user_metadata?.role) {
+      supabaseAdmin.auth.admin.updateUserById(data.user.id, {
+        user_metadata: { ...data.user.user_metadata, role: profile.role }
+      }).catch(e => console.warn('Silently failed to sync role metadata:', e.message));
     }
 
     res.json({
       user: data.user,
-      profile,
+      profile: profile || { role: data.user.user_metadata?.role || 'citizen' },
       session: data.session
     });
   } catch (err) { next(err); }
@@ -141,7 +180,6 @@ router.post('/logout', async (req, res, next) => {
 // GET /api/auth/me
 router.get('/me', authMiddleware, async (req, res, next) => {
   try {
-    const { supabaseAdmin } = require('../models/supabaseClient');
     const { data: profile, error } = await supabaseAdmin
       .from('profiles')
       .select('*')
@@ -154,11 +192,9 @@ router.get('/me', authMiddleware, async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-// POST /api/auth/sync-role — Re-sync user_metadata role from profiles table
-// Call this if role was updated in DB but the token still shows the old role
+// POST /api/auth/sync-role
 router.post('/sync-role', authMiddleware, async (req, res, next) => {
   try {
-    const { supabaseAdmin } = require('../models/supabaseClient');
     const { data: profile } = await supabaseAdmin
       .from('profiles')
       .select('role, full_name')
@@ -167,17 +203,16 @@ router.post('/sync-role', authMiddleware, async (req, res, next) => {
 
     if (!profile) return res.status(404).json({ error: 'Profile not found' });
 
-    // Update user_metadata and app_metadata with current DB role
     await supabaseAdmin.auth.admin.updateUserById(req.user.id, {
       user_metadata: { ...req.user.user_metadata, role: profile.role }
     });
 
     res.json({
       message: 'Role synced successfully',
-      role: profile.role,
-      note: 'Please log out and log back in for the new role to take effect in your session.'
+      role: profile.role
     });
   } catch (err) { next(err); }
 });
 
 module.exports = router;
+

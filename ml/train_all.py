@@ -52,7 +52,9 @@ def main():
     parser.add_argument('--yolo-epochs', type=int, default=30, help='YOLO epochs (default: 30)')
     parser.add_argument('--bert-epochs', type=int, default=5, help='BERT epochs (default: 5)')
     parser.add_argument('--device', type=str, default='cpu', help='Device: cpu or 0 for GPU')
-    parser.add_argument('--max-per-class', type=int, default=400, help='Max images per class (default 400. Use 50000 for ALL images).')
+    parser.add_argument('--max-per-class', type=int, default=50000, help='Max images per class (default: 50000 = ALL). Ignored if --balance is used.')
+    parser.add_argument('--balance', action='store_true', default=True, help='Use balanced dataset (recommended, fixes class imbalance)')
+    parser.add_argument('--no-balance', action='store_true', help='Skip balancing, use raw dataset')
     args = parser.parse_args()
 
     print("""
@@ -66,9 +68,20 @@ def main():
     overall_start = time.time()
     results = {}
 
+    # 0. Balance dataset (if not skipping)
+    if not args.skip_yolo and args.balance and not args.no_balance:
+        balance_cmd = f'"{python}" balance_dataset.py'
+        if args.dry_run:
+            balance_cmd += ' --dry-run'
+        results['Balance'] = run_script('Dataset Balancing', balance_cmd, ML_DIR)
+        if not results.get('Balance', True):
+            print("\n  Dataset balancing failed. Aborting.")
+            sys.exit(1)
+
     # 1. Train YOLO
     if not args.skip_yolo:
         dry_flag = ' --dry-run' if args.dry_run else ''
+        # When balanced, skip the internal prepare_dataset (data is already in prepared/)
         yolo_cmd = f'"{python}" train_yolo.py --epochs {args.yolo_epochs} --device {args.device} --max_per_class {args.max_per_class}{dry_flag}'
         results['YOLO'] = run_script('YOLO Training', yolo_cmd, ML_DIR)
     else:

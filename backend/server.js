@@ -12,12 +12,24 @@ const analyticsRoutes = require('./routes/analytics');
 const departmentRoutes = require('./routes/departments');
 const cctvRoutes = require('./routes/cctv');
 const adminRoutes = require('./routes/admin');
+const notificationRoutes = require('./routes/notifications');
 
 // Import middleware
 const { errorHandler } = require('./middleware/errorHandler');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Trust Render's proxy for express-rate-limit
+app.set('trust proxy', 1);
+
+// Validate critical environment variables on startup
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+  console.error('❌ CRITICAL ERROR: Supabase environment variables are missing!');
+  console.log('Detected URL:', process.env.SUPABASE_URL ? '✅ Present' : '❌ Missing');
+} else {
+  console.log('✅ Supabase configuration detected');
+}
 
 // =========================
 // MIDDLEWARE
@@ -67,6 +79,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/departments', departmentRoutes);
 app.use('/api/cctv', cctvRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // =========================
 // ERROR HANDLING

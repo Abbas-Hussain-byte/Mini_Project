@@ -355,35 +355,34 @@ def analyze_image():
         if image is None:
             return jsonify({'error': 'Failed to load image'}), 400
 
+        # Load model and determine base threshold
         model = load_yolo()
-        # Use low base conf to catch everything, then filter per-class
-        base_conf = 0.08 if os.path.exists(os.path.join(os.path.dirname(__file__), 'models', 'yolo-urban', 'best.pt')) else 0.25
-        results = model(image, conf=base_conf, verbose=False)
-
+        # Use lower base to pick up signals, then filter by PER_CLASS_CONF
+        is_finetuned = os.path.exists(os.path.join(os.path.dirname(__file__), 'models', 'yolo-urban', 'best.pt'))
+        base_conf = 0.08 if is_finetuned else 0.20
+        
+        yolo_results = model(image, conf=base_conf, verbose=False)
         detections = []
-        for result in results:
-            for box in result.boxes:
+        for r in yolo_results:
+            for box in r.boxes:
                 cls_id = int(box.cls[0])
-                confidence = float(box.conf[0])
+                conf = float(box.conf[0])
                 label = YOLO_CLASSES[cls_id] if cls_id < len(YOLO_CLASSES) else f'class_{cls_id}'
                 
-                # Per-class confidence filtering
+                # Intelligent per-class filtering
                 min_conf = PER_CLASS_CONF.get(label, 0.15)
-                if confidence < min_conf:
-                    continue
-                    
-                bbox = box.xyxy[0].tolist()
-                detections.append({
-                    'label': label,
-                    'confidence': round(confidence, 4),
-                    'bbox': [round(b, 2) for b in bbox],
-                    'class_id': cls_id
-                })
+                if conf >= min_conf:
+                    detections.append({
+                        'label': label,
+                        'confidence': round(conf, 4),
+                        'bbox': [round(b, 2) for b in box.xyxy[0].tolist()],
+                        'class_id': cls_id
+                    })
 
         return jsonify({
             'detections': detections,
             'count': len(detections),
-            'model': 'yolo-finetuned' if base_conf == 0.08 else 'yolo-pretrained'
+            'model': 'yolo-finetuned' if is_finetuned else 'yolo-pretrained'
         })
 
     except Exception as e:
@@ -613,26 +612,34 @@ def analyze_video():
             return jsonify({'error': 'video file is required'}), 400
 
         video_bytes = file.read()
-        frames = extract_video_frames(video_bytes, max_frames=5)
+        # Increased max_frames from 5 to 15 for better coverage
+        frames = extract_video_frames(video_bytes, max_frames=15)
 
         if not frames:
             return jsonify({'error': 'Could not extract frames from video'}), 400
 
         model = load_yolo()
+        is_finetuned = os.path.exists(os.path.join(os.path.dirname(__file__), 'models', 'yolo-urban', 'best.pt'))
+        base_conf = 0.08 if is_finetuned else 0.20
+        
         all_detections = []
         frame_results = []
 
         for i, frame in enumerate(frames):
-            results = model(frame, conf=0.25, verbose=False)
+            results = model(frame, conf=base_conf, verbose=False)
             frame_dets = []
             for r in results:
                 for box in r.boxes:
                     cls_id = int(box.cls[0])
                     conf = float(box.conf[0])
                     label = YOLO_CLASSES[cls_id] if cls_id < len(YOLO_CLASSES) else f'class_{cls_id}'
-                    det = {'label': label, 'confidence': round(conf, 4), 'class_id': cls_id}
-                    frame_dets.append(det)
-                    all_detections.append(det)
+                    
+                    # Apply the same PER_CLASS_CONF logic used for images
+                    min_conf = PER_CLASS_CONF.get(label, 0.15)
+                    if conf >= min_conf:
+                        det = {'label': label, 'confidence': round(conf, 4), 'class_id': cls_id}
+                        frame_dets.append(det)
+                        all_detections.append(det)
 
             frame_results.append({'frame_index': i, 'detections': frame_dets})
 

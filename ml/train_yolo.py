@@ -1,5 +1,5 @@
 """
-CivicPulse — YOLO Fine-Tuning on Kaggle Urban Issues Dataset
+CivicPulse  YOLO Fine-Tuning on Kaggle Urban Issues Dataset
 Handles the nested ClassName/ClassName/split/images structure,
 preserves the original Kaggle 0-9 class IDs, and trains with augmentation.
 
@@ -55,7 +55,7 @@ CLASSES = [
     'Damaged Electric wires and poles',  # 9
 ]
 
-# Mapping from dataset folder names → the EXPECTED class IDs in that folder's labels.
+# Mapping from dataset folder names  the EXPECTED class IDs in that folder's labels.
 # Instead of remapping, we PRESERVE the original Kaggle class IDs.
 # The label files already contain the correct class IDs (0-9).
 # We just need to know which folders to process.
@@ -71,7 +71,7 @@ DATASET_FOLDERS = [
     'DamagedElectricalPoles',        # contains class 9
 ]
 
-VALID_CLASS_IDS = set(range(10))  # 0–9
+VALID_CLASS_IDS = set(range(10))  # 09
 
 
 def clean_prepared_dir():
@@ -80,7 +80,7 @@ def clean_prepared_dir():
     import gc, time, stat
 
     def force_remove(func, path, exc_info):
-        """Error handler for shutil.rmtree — force-remove read-only or locked files."""
+        """Error handler for shutil.rmtree  force-remove read-only or locked files."""
         try:
             os.chmod(path, stat.S_IWRITE)
             func(path)
@@ -168,7 +168,7 @@ def prepare_dataset(max_per_class=None):
     The Kaggle dataset has the structure:
         kaggle_archive/
           ClassName/
-            ClassName/           ← nested duplicate folder
+            ClassName/            nested duplicate folder
               train/
                 images/*.jpg
                 labels/*.txt
@@ -195,7 +195,7 @@ def prepare_dataset(max_per_class=None):
     import random
     
     if not os.path.exists(KAGGLE_DATA_DIR):
-        print(f"❌ Kaggle dataset not found at: {KAGGLE_DATA_DIR}")
+        print(f" Kaggle dataset not found at: {KAGGLE_DATA_DIR}")
         print("   Please extract the dataset to this directory.")
         return False
     
@@ -214,7 +214,7 @@ def prepare_dataset(max_per_class=None):
         folder_path = os.path.join(KAGGLE_DATA_DIR, folder_name)
         
         if not os.path.exists(folder_path):
-            print(f"⚠️  Folder not found, skipping: {folder_name}")
+            print(f"  Folder not found, skipping: {folder_name}")
             continue
         
         # Handle nested folder: ClassName/ClassName/
@@ -224,7 +224,7 @@ def prepare_dataset(max_per_class=None):
         else:
             data_path = folder_path
         
-        print(f"📂 Processing: {folder_name}")
+        print(f"Processing: {folder_name}")
         
         for split in ['train', 'valid', 'test']:
             images_dir = os.path.join(data_path, split, 'images')
@@ -253,7 +253,7 @@ def prepare_dataset(max_per_class=None):
                 # Use unique prefixed name to avoid collisions between folders
                 unique_name = f"{folder_name}_{img_name}"
                 
-                # Process corresponding label FIRST — skip images with invalid/empty labels
+                # Process corresponding label FIRST  skip images with invalid/empty labels
                 label_name = os.path.splitext(img_name)[0] + '.txt'
                 label_path = os.path.join(labels_dir, label_name)
                 dest_label = os.path.join(PREPARED_DIR, 'labels', split, f"{folder_name}_{label_name}")
@@ -285,7 +285,7 @@ def prepare_dataset(max_per_class=None):
                         has_valid_label = True
                         total_labels += 1
                 
-                # Copy the image (even if label is empty — YOLO treats that as background)
+                # Copy the image (even if label is empty  YOLO treats that as background)
                 dest_img = os.path.join(PREPARED_DIR, 'images', split, unique_name)
                 shutil.copy2(img_path, dest_img)
                 total_images += 1
@@ -298,13 +298,13 @@ def prepare_dataset(max_per_class=None):
     
     # Report
     print(f"\n{'='*60}")
-    print(f"✅ Dataset prepared successfully!")
+    print(f"Dataset prepared successfully!")
     print(f"{'='*60}")
-    print(f"   📷 Total images: {total_images}")
-    print(f"   🏷️  Label files with valid annotations: {total_labels}")
-    print(f"   📝 Total annotations: {total_annotations}")
-    print(f"   ⚠️  Skipped invalid label lines: {skipped_lines}")
-    print(f"   🔧 BOM characters fixed: {bom_fixed}")
+    print(f"   Total images: {total_images}")
+    print(f"   Label files with valid annotations: {total_labels}")
+    print(f"   Total annotations: {total_annotations}")
+    print(f"   Skipped invalid label lines: {skipped_lines}")
+    print(f"   BOM characters fixed: {bom_fixed}")
     
     for split in ['train', 'valid', 'test']:
         n_imgs = len(os.listdir(os.path.join(PREPARED_DIR, 'images', split)))
@@ -312,22 +312,22 @@ def prepare_dataset(max_per_class=None):
         print(f"   {split}: {n_imgs} images, {n_lbls} labels")
     
     # Class balance report (based on ANNOTATIONS, not images)
-    print(f"\n📊 Class annotation distribution:")
+    print(f"\nClass annotation distribution:")
     missing_classes = []
     for cls_id in range(10):
         count = class_annotation_counts.get(cls_id, 0)
         cls_name = CLASSES[cls_id] if cls_id < len(CLASSES) else f'class_{cls_id}'
-        bar = '█' * min(count // 100, 50)
-        status = '✅' if count > 0 else '❌ MISSING'
+        bar = '#' * min(count // 100, 50)
+        status = '[OK]' if count > 0 else '[MISSING]'
         print(f"   [{cls_id}] {cls_name:40} : {count:5d} {bar} {status}")
         if count == 0:
             missing_classes.append(cls_id)
     
     if missing_classes:
-        print(f"\n🚨 WARNING: Classes with ZERO annotations: {missing_classes}")
+        print(f"\n WARNING: Classes with ZERO annotations: {missing_classes}")
         print(f"   The model will not learn these classes!")
     else:
-        print(f"\n🎉 All 10 classes have annotations!")
+        print(f"\n All 10 classes have annotations!")
     
     return total_images > 0
 
@@ -347,7 +347,7 @@ def create_data_yaml():
     with open(yaml_path, 'w') as f:
         yaml.dump(data_config, f, default_flow_style=False, sort_keys=False)
     
-    print(f"📄 Created data.yaml at: {yaml_path}")
+    print(f" Created data.yaml at: {yaml_path}")
     return yaml_path
 
 
@@ -360,14 +360,14 @@ def train_yolo(args):
     print("=" * 60 + "\n")
     
     if not prepare_dataset(max_per_class=args.max_per_class):
-        print("❌ Dataset preparation failed. Exiting.")
+        print(" Dataset preparation failed. Exiting.")
         return False
     
     # Step 2: Create data.yaml
     yaml_path = create_data_yaml()
     
     if args.dry_run:
-        print("\n🏁 Dry-run complete — dataset prepared successfully.")
+        print("\nDry-run complete -- dataset prepared successfully.")
         print("   Run without --dry-run to start training.")
         return True
     
@@ -378,11 +378,15 @@ def train_yolo(args):
     
     from ultralytics import YOLO
     
-    # Model selection: YOLOv11n (best for 4GB VRAM) or YOLOv11m
+    # Model selection: YOLOv11n (best for 4GB VRAM), YOLOv11s, or best.pt for fine-tuning
     model_file = args.model
     last_ckpt = os.path.join(ML_DIR, 'runs', 'yolo-urban', 'weights', 'last.pt')
+    best_deployed = os.path.join(ML_DIR, 'models', 'yolo-urban', 'best.pt')
     
-    if args.resume and os.path.exists(last_ckpt):
+    if args.fine_tune and os.path.exists(best_deployed):
+        print(f" Fine-tuning mode enabled. Loading best weights from: {best_deployed}")
+        model = YOLO(best_deployed)
+    elif args.resume and os.path.exists(last_ckpt):
         print(f"Resuming from checkpoint: {last_ckpt}")
         model = YOLO(last_ckpt)
     else:
@@ -396,18 +400,18 @@ def train_yolo(args):
             model = YOLO(model_file)
     
     # ========================================
-    # Augmentation config — tuned for accuracy
+    # Augmentation config  tuned for accuracy
     # ========================================
     augmentation = {
         'hsv_h': 0.015,     # Hue augmentation
         'hsv_s': 0.7,       # Saturation augmentation
         'hsv_v': 0.4,       # Value augmentation
         'translate': 0.1,   # Translation (+/- 10%)
-        'scale': 0.5,       # Scale (+/- 50%) — helps detect objects at different sizes
-        'fliplr': 0.5,      # Horizontal flip — catches corner objects
-        'flipud': 0.1,      # Vertical flip (low prob for urban scenes)
-        'mosaic': 1.0,      # Mosaic augmentation — CRITICAL for small dataset classes
-        'mixup': 0.15,      # MixUp augmentation — improves generalization
+        'scale': 0.5,       # Scale (+/- 50%)  helps detect objects at different sizes
+        'fliplr': 0.5,      # Horizontal flip  catches corner objects
+        'flipud': 0.0,      # Disabled — vertical flip is unnatural for urban scenes
+        'mosaic': 1.0,      # Mosaic augmentation  CRITICAL for small dataset classes
+        'mixup': 0.15,      # MixUp augmentation  improves generalization
         'degrees': 5.0,     # Small rotation for robustness
         'shear': 2.0,       # Small shear
         'perspective': 0.0001,  # Very slight perspective
@@ -436,9 +440,9 @@ def train_yolo(args):
         data=yaml_path,
         epochs=args.epochs,
         imgsz=args.imgsz,
-        batch=args.batch,
+        batch=16 if args.batch > 16 else args.batch, # High performance cap for 4GB VRAM
         device=args.device,
-        patience=20,           # More patience — don't stop early on noisy loss
+        patience=20,           # More patience  don't stop early on noisy loss
         save=True,
         save_period=10,        # Save checkpoint every 10 epochs
         project=os.path.join(ML_DIR, 'runs'),
@@ -446,16 +450,16 @@ def train_yolo(args):
         exist_ok=True,
         pretrained=True,
         optimizer='AdamW',
-        lr0=0.01,              # Higher initial LR for strong convergence
+        lr0=0.001 if args.fine_tune else 0.01, # Lower LR for fine-tuning
         lrf=0.01,              # Final LR fraction
-        warmup_epochs=5,       # Warmup for stable training
+        warmup_epochs=0 if args.fine_tune else 5, # Skip warmup for fine-tuning
         cos_lr=True,           # Cosine LR schedule
-        cls=2.0,               # Boost classification loss weight
+        cls=3.0,               # Boost classification loss weight (increased from 2.0 for better class accuracy)
         box=7.5,               # Standard box loss weight
         verbose=True,
-        workers=2,             # Windows-safe worker count
-        close_mosaic=15,       # Disable mosaic for last 15 epochs (finer detail learning)
-        amp=True,              # FP16 mixed precision — CRITICAL for 4GB VRAM
+        workers=2,             # High performance data loading (safe for Windows)
+        close_mosaic=5,        # Disable mosaic for last 5 epochs only (15 caused training collapse)
+        amp=True,              # FP16 mixed precision
         cache='disk',          # Cache images to disk for faster data loading
         # Augmentation parameters
         **augmentation,
@@ -473,7 +477,7 @@ def train_yolo(args):
         os.makedirs(OUTPUT_MODEL_DIR, exist_ok=True)
         dest_pt = os.path.join(OUTPUT_MODEL_DIR, 'best.pt')
         shutil.copy2(best_pt, dest_pt)
-        print(f"✅ Best model deployed to: {dest_pt}")
+        print(f"Best model deployed to: {dest_pt}")
         print(f"   The ML service will auto-load this model on next restart.")
     else:
         # Try last.pt as fallback
@@ -482,12 +486,12 @@ def train_yolo(args):
             os.makedirs(OUTPUT_MODEL_DIR, exist_ok=True)
             dest_pt = os.path.join(OUTPUT_MODEL_DIR, 'best.pt')
             shutil.copy2(last_pt, dest_pt)
-            print(f"✅ Last model deployed to: {dest_pt}")
+            print(f" Last model deployed to: {dest_pt}")
         else:
-            print("⚠️  No model weights found in training output.")
+            print("  No model weights found in training output.")
             return False
     
-    print("\n🎉 YOLO training complete!")
+    print("\n YOLO training complete!")
     return True
 
 
@@ -500,6 +504,7 @@ if __name__ == '__main__':
     parser.add_argument('--device', type=str, default='0', help='Device: cpu or 0 for GPU')
     parser.add_argument('--max_per_class', type=int, default=None, help='Max images per class per split (default: None = use ALL images)')
     parser.add_argument('--resume', action='store_true', help='Resume from last checkpoint')
+    parser.add_argument('--fine-tune', action='store_true', help='Fine-tune from best.pt with lower LR and fewer epochs')
     parser.add_argument('--dry-run', action='store_true', help='Only prepare dataset, skip training')
     
     args = parser.parse_args()

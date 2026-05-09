@@ -1,4 +1,4 @@
-﻿import axios from 'axios';
+import axios from 'axios';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -101,6 +101,13 @@ export const adminAPI = {
   escalateComplaint: (id) => api.post(`/admin/escalate/${id}`),
   getNotifications: () => api.get('/admin/notifications'),
   exportComplaints: (params) => api.get('/admin/export', { params, responseType: 'blob' }),
+};
+
+// ==================== NOTIFICATIONS ====================
+export const notificationsAPI = {
+  getAll: () => api.get('/notifications'),
+  markAsRead: (id) => api.patch(`/notifications/${id}/read`),
+  markAllRead: () => api.post('/notifications/mark-all-read'),
 };
 
 export default api;

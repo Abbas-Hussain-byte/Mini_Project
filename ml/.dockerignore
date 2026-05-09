@@ -1,0 +1,25 @@
+# Exclude training logs and data
+runs/
+data/
+kaggle_archive/
+
+# Exclude Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Exclude local environment
+venv/
+.venv/
+.env
+
+# Exclude notebooks
+*.ipynb
+
+# Exclude Git
+.git
+.gitignore
