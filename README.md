@@ -27,6 +27,7 @@
 - **Backend**: Node.js, Express, Supabase (Auth & Database)
 - **Machine Learning**: 
     - **Computer Vision**: YOLOv11 (PyTorch)
+        The dataset can be accessed using this drive link : https://drive.google.com/file/d/1zqqhQxgaUjvco7yVrvz5itZtT9crsI2C/view?usp=sharing
     - **NLP**: DistilBERT (Hugging Face Transformers)
     - **Inference**: Flask & Gunicorn on Hugging Face Spaces / Render
 - **Deployment**: Vercel (Frontend), Render (Backend), Supabase (PostgreSQL)
